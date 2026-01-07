@@ -18,7 +18,7 @@ REQUIRE Project, ProjectFilter, ProjectGeo,
         ProjectManufacturingOrderTimeEntry, ProjectManufacturingOrderTimesheet,
         ProjectManufacturingOrderCost, ProjectManufacturingOrderReport,
         Shift, ProjectShift, ShiftSchedule,
-        TimesheetSupervisor, TimesheetSupervisorMobile, TimesheetSupervisorTask, TimesheetEmployee,
+        TimesheetSupervisor, TimesheetSupervisorMobile, TimesheetSupervisorTask, TimesheetEmployee, TimesheetPersonalEmployee,
         ProjectPayslipLine, ProjectTimeEntryPayslip, ProjectAssignmentPayslip,
         ProjectAttendance, ProjectTimeEntryAttendance,
         ProjectAttendanceMobile, ProjectAssignmentAttendanceMobile, ProjectAttendanceKiosk;
