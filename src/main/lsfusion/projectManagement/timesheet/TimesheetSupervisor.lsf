@@ -20,7 +20,7 @@ FORM timesheetSupervisor 'Supervisor timesheet'
     FILTERS iterate(d, from(dates), to(dates))
     
     OBJECTS e = Employee
-    PROPERTIES(e) READONLY firstName, lastName, namePosition, rolesTimesheet
+    PROPERTIES(e) READONLY MasterData.name, /* firstName, lastName, */ namePosition, nameDepartment, rolesTimesheet
     PROPERTIES hoursTimesheet(d, e) WAIT COLUMNS (d) HEADER extractDay(d) BACKGROUND backgroundHoursTimesheet(d, e)
                ON CHANGE {
                    FOR TimeEntryType et = timesheetTimeEntryType() AND (timesheetProject() OR NOT project(timeEntry(d, e, timesheetTimeEntryType()))) DO {
