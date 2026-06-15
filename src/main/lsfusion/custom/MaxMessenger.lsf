@@ -1,0 +1,235 @@
+MODULE MaxMessenger;
+
+REQUIRE Messenger;
+
+NAMESPACE Max;
+
+EXTEND CLASS Messenger { Max 'Max' }
+isMax(Account a) = messenger(a) == Messenger.Max;
+showTitle(Messenger m) += WHEN m == Messenger.Max THEN TRUE;
+
+httpHeaders = DATA LOCAL NESTED TEXT(TEXT);
+
+setHttpHeadersMax 'Задать заголовки' (Account a){
+    httpHeaders('Content-Type') <- 'application/json';
+
+    IF token(a) THEN {
+        httpHeaders('Authorization') <- token(a);
+    }
+}
+
+GROUP chats;
+GROUP dialog_with_user;
+GROUP photo : dialog_with_user;
+
+marker = DATA LOCAL NUMERIC();
+last_activity_time = DATA LOCAL NUMERIC(INTEGER);
+user_id = DATA LOCAL NUMERIC(INTEGER);
+last_name = DATA LOCAL STRING(INTEGER);
+url = DATA LOCAL STRING(INTEGER);
+is_bot = DATA LOCAL STRING(INTEGER);
+first_name = DATA LOCAL STRING(INTEGER);
+username = DATA LOCAL STRING(INTEGER);
+participants_count = DATA LOCAL NUMERIC(INTEGER);
+last_event_time = DATA LOCAL NUMERIC(INTEGER);
+icon = DATA LOCAL STRING(INTEGER);
+is_public = DATA LOCAL STRING(INTEGER);
+type = DATA LOCAL STRING(INTEGER);
+title = DATA LOCAL STRING(INTEGER);
+chat_id = DATA LOCAL STRING(INTEGER);
+status = DATA LOCAL STRING(INTEGER);
+
+FORM getUpdates
+
+    PROPERTIES() marker
+
+    OBJECTS chats = INTEGER
+
+    PROPERTIES(chats) participants_count, last_event_time, icon, is_public, type, title, chat_id, status
+    PROPERTIES(chats) IN dialog_with_user last_activity_time, user_id, last_name, is_bot, first_name, username
+    PROPERTIES(chats) IN photo url;
+
+getChats 'Получить чаты' (Messenger.Account a){
+    IF isMax(a) THEN {
+        LOCAL response = FILE();
+        LOCAL next = BOOLEAN ();
+        setHttpHeadersMax(a);
+        next() <- TRUE;
+        WHILE next() DO {
+            EXTERNAL HTTP GET CONCAT '', 'https://platform-api.max.ru/chats?count=100&marker=', marker() HEADERS httpHeaders TO response;
+            IMPORT getUpdates FROM response();
+            FOR INTEGER i = [GROUP MAX INTEGER j BY chat_id(j)](STRING id) AND NOT chatIdAccount(a, id) NEW c = Chat DO{
+                id(c) <- id;
+                account(c) <- a;
+            }
+            FOR INTEGER i = [GROUP MAX INTEGER j BY chat_id(j)](STRING id) AND Chat c = chatIdAccount(a, id) DO{
+                name(c) <- ISTRING[100](IF type(i) = 'private' THEN CONCAT ' ', last_name(i), first_name(i) ELSE title(i));
+                title(c) <- title(i);
+                chatType(c) <- CASE
+                    WHEN type(i) = 'dialog' THEN ChatType.private
+                    WHEN type(i) = 'channel' THEN ChatType.channel
+                    WHEN type(i) = 'group' THEN ChatType.group
+                    ELSE ChatType.group;
+            }
+            next() <- TRUE IF marker();
+        }
+        APPLY;
+    }
+}
+
+EXTEND FORM messengers
+    PROPERTIES (a) getChats TOOLBAR SHOWIF isMax(a)
+;
+
+getUpdates 'Получить все чаты '(){
+    NEWSESSION APPLY {
+        FOR isMax(Messenger.Account a) DO getChats(a);
+    }
+}
+
+sendMessageMaxResult = DATA LOCAL NESTED STRING();
+
+processResult(Chat chat, JSONFILE result, STRING message, NAMEDFILE file) {
+    NEW botMessage = Message {
+        chat(botMessage) <- chat;
+        file(botMessage) <- file;
+        message(botMessage) <- message;
+        dateTime(botMessage) <- currentDateTime();
+        from(botMessage) <- 'YOU';
+    }
+}
+
+GROUP payload;
+
+token = DATA LOCAL STRING(INTEGER);
+text = DATA LOCAL STRING();
+
+FORM messageMax
+    PROPERTIES() text
+
+    OBJECTS attachments = INTEGER
+
+    PROPERTIES(attachments) type
+    PROPERTIES(attachments) IN payload token;
+
+sendMessageMax(Chat chat, STRING message, STRING attachmentToken, LONG fileId) {
+    LOCAL result = JSONFILE();
+    LOCAL elements = JSON (INTEGER);
+    LOCAL code = STRING ();
+    LOCAL message = STRING();
+    sendMessageMaxResult() <- NULL;
+    setHttpHeadersMax(account(chat));
+
+    elements(1) <- JSON FROM type = 'file', payload = (JSON FROM token = attachmentToken, fileId = fileId);
+    EXPORT JSON FROM text = message, attachments = (JSON FROM value = elements(INTEGER i) WHERE i = 1) IF attachmentToken;
+    TRY {
+        EXTERNAL HTTP POST CONCAT '', 'https://platform-api.max.ru/messages?chat_id=', id(chat) HEADERS httpHeaders PARAMS exportFile() TO result;
+    }CATCH{
+        IMPORT FROM result() TO() code, message;
+        IF code() THEN {
+            sendMessageMaxResult() <- CONCAT ':', code(), message();
+        }
+    }
+
+    processResult(chat, result(), message, NULL);
+}
+
+sendMessage(Chat chat, STRING message) + WHEN isMax(account(chat)) AND message IS STRING THEN {
+    sendMessageMax(chat, message, NULL, NULL);
+    sendMessageResult() <- sendMessageMaxResult();
+}
+
+sendFileMax(Chat chat, NAMEDFILE attachment) {
+    LOCAL result = JSONFILE();
+    LOCAL uploadUrl = STRING();
+    LOCAL fileToken = STRING();
+    LOCAL fileId = LONG();
+
+    // 1. Получаем URL для загрузки (POST /uploads)
+    setHttpHeadersMax(account(chat));
+
+    EXTERNAL HTTP POST 'https://platform-api.max.ru/uploads?type=file'
+        HEADERS httpHeaders
+        TO result;
+
+    IMPORT JSON FROM result() TO () uploadUrl = url;
+
+    IF uploadUrl() THEN {
+        // 2. Отправляем файл по полученному URL
+        LOCAL headers = TEXT(TEXT);
+        LOCAL fileName = STRING();
+        fileName() <- CONCAT '', name(attachment), IF length(extension(attachment)) > 0 THEN '.' ELSE '', extension(attachment);
+
+        EXTERNAL HTTP POST uploadUrl()
+            BODYPARAMNAMES 'data;' + fileName()
+            HEADERS headers
+            PARAMS FILE(attachment)
+            TO result;
+
+        IMPORT JSON FROM result() TO () fileToken = token, fileId = fileId;
+
+        LOCAL stop = BOOLEAN ();
+        LOCAL sleepTime = INTEGER ();
+        stop() <- NULL;
+        sleepTime() <- 1000;
+        // 3. Отправляем сообщение в чат
+        WHILE sleepTime() < 20000 AND NOT stop() DO {
+            sleep(sleepTime());
+            sendMessageMax(chat, '', fileToken(), fileId());
+            sleepTime() <- sleepTime() * 2;
+            stop() <- TRUE IF sendMessageMaxResult() != 'attachment.not.ready:Key: errors.process.attachment.file.not.processed' OR NOT sendMessageMaxResult();
+        }
+    } ELSE {
+        MESSAGE 'Не удалось получить URL для загрузки файла';
+    }
+}
+
+sendFile(Chat chat, NAMEDFILE attachment) + WHEN isMax(account(chat)) AND attachment IS NAMEDFILE THEN {
+    sendFileMax(chat, attachment);
+    sendMessageResult() <- sendMessageMaxResult();
+}
+
+accountDefaultMax () = GROUP MIN Account a IF name(a) = 'LSF' AND messenger(a) = Messenger.Max;
+
+chatDefaultMax = DATA Chat ();
+nameChatDefaultMax 'Чат для рассылки отчетов (Max)' () = name(chatDefaultMax());
+
+CONSTRAINT SETCHANGED(chatDefaultMax()) AND NOT isMax(account(chatDefaultMax()))
+    CHECKED BY chatDefaultMax[]
+    MESSAGE 'Выбран чат, который не является чатом Max';
+
+EXTEND FORM options
+    PROPERTIES ()nameChatDefaultMax
+;
+DESIGN options{
+    commons {
+        MOVE PROPERTY (nameChatDefaultMax());
+    }
+}
+
+sendFileMaxTry(Chat c, NAMEDFILE attachment) {
+    TRY {
+        sendFile(c, attachment);
+    } CATCH {
+        logToFile('FileMax',  CONCAT '\n', (CONCAT ' : ', 'SendFile ID_CHAT', id(c)), ' ERROR:', messageCaughtException());
+    }
+}
+
+sendFileMax(Account a, NAMEDFILE attachment) {
+    FOR Chat c IS Chat AND account(c) = a DO {
+        sendFileMaxTry(c, attachment);
+    }
+}
+
+sendMessageMaxTry(Chat c, STRING message) {
+    TRY {
+        sendMessage(c, message);
+    } CATCH {
+        logToFile('FileMax', CONCAT '\n', (CONCAT ' : ', 'SendMessage ID_CHAT', id(c)), ' ERROR:', messageCaughtException());
+    }
+}
+sendMessageMax(Account a, STRING message) {
+    FOR Chat c IS Chat AND account(c) = a DO {
+        sendMessageMaxTry(c,message);
+    }
+}

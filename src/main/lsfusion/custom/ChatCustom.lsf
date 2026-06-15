@@ -1,0 +1,7 @@
+MODULE ChatCustom;
+
+REQUIRE Chat, Icon;
+
+NAVIGATOR {
+    MOVE fullChat WINDOW toolbar HEADER badged('{chat.chat}', (OVERRIDE countUnreadMessages(currentUser()), 0))LAST ;
+}

@@ -1,0 +1,101 @@
+MODULE ManufacturingOrderNotification;
+
+REQUIRE ProjectManufacturingOrder, MaxMessenger, ProjectAssignment;
+
+NAMESPACE Manufacturing;
+
+assigned 'Assigned' = DATA BOOLEAN (ManufacturingOrder, Employee);
+sendToMax 'Max' = DATA BOOLEAN (ManufacturingOrder, Employee);
+sendToEmail 'Email' = DATA BOOLEAN (ManufacturingOrder, Employee);
+
+countAssignees (ManufacturingOrder o) = GROUP SUM 1 IF assigned(o, Employee e);
+
+WHEN (SETCHANGED(project(ManufacturingOrder o)) OR SETCHANGED(scheduledDateTime(o)))
+    AND project(o) AND scheduledDateTime(o) AND NOT countAssignees(o) DO {
+    assigned(o, Employee e) <- TRUE WHERE assigned(project(o), e, DATE(scheduledDateTime(o)));
+}
+
+//notifications
+sendNotificationManufacturingOrder 'Отправка уведомлений по производственому заказу' ABSTRACT LIST (ManufacturingOrder, STRING);
+
+textMessageComment(ManufacturingOrderComment c) = CONCAT '\n',
+    '💬 Новый комментарий',
+    '📋 Заказ №' + number(manufacturingOrder(c)),
+    '👤 ' + fullName(user(c)),
+    '',
+    [FORMULA STRING 'btrim(regexp_replace(regexp_replace($1, \'</p>|<br[^>]*>\', chr(10), \'gi\'), \'<[^>]+>\', \'\', \'g\'))'](text(c));
+
+textMessageFile(ManufacturingOrderFile f) = CONCAT '\n',
+    '📎 Добавлен файл',
+    '📋 Заказ №' + number(manufacturingOrder(f)),
+    '👤 ' + fullName(user(f)),
+    '',
+    (CONCAT '.', name(f), extension(f));
+
+WHEN SETCHANGED (text(ManufacturingOrderComment c)) AND ManufacturingOrder o = manufacturingOrder(c) DO sendNotificationManufacturingOrder(o, textMessageComment(c));
+WHEN SETCHANGED (file(ManufacturingOrderFile f)) AND ManufacturingOrder o = manufacturingOrder(f) DO sendNotificationManufacturingOrder(o, textMessageFile(f));
+
+sendNotificationManufacturingOrderEmail(ManufacturingOrder o, Employee e, STRING s){
+    EMAIL
+        SUBJECT s
+        TO MasterData.email(e)
+        BODY s;
+    ;
+}
+
+sendNotificationManufacturingOrder(ManufacturingOrder o, STRING s)+{
+    FOR assigned(o, Employee e) AND sendToEmail(o, e) DO {
+        sendNotificationManufacturingOrderEmail(o, e, s);
+    }
+}
+
+
+chat 'Чат Max' = DATA Chat(Employee);
+nameChat 'Чат Max' (Employee e)= name(chat(e));
+
+EXTEND FORM employee
+    PROPERTIES(e) nameChat AFTER email(e)
+;
+
+DESIGN employee {
+    info {
+        MOVE PROPERTY (nameChat(e));
+    }
+}
+sendNotificationManufacturingOrderMessenger(ManufacturingOrder o, Employee e, STRING s){
+    sendMessage(chat(e), s);
+}
+
+sendNotificationManufacturingOrder(ManufacturingOrder o, STRING s)+{
+    FOR assigned(o, Employee e) AND sendToMax(o, e) AND chat(e) DO {
+        sendNotificationManufacturingOrderMessenger(o, e, s);
+    }
+}
+
+addAssignee 'Add' (ManufacturingOrder o) {
+    DIALOG employees OBJECTS e INPUT DO {
+        assigned(o, e) <- TRUE;
+    }
+}
+
+unassign 'Remove' (ManufacturingOrder o, Employee e) {
+    assigned(o, e) <- NULL;
+    sendToMax(o, e) <- NULL;
+    sendToEmail(o, e) <- NULL;
+}
+
+EXTEND FORM manufacturingOrder
+    OBJECTS e = Employee
+    PROPERTIES(e) READONLY MasterData.firstName, MasterData.lastName
+    PROPERTIES sendToMax(o, e), sendToEmail(o, e)
+    PROPERTIES  DRAW e TOOLBAR addAssignee(o), unassign(o, e)
+    FILTERS assigned(o, e);
+
+DESIGN manufacturingOrder {
+    details {
+        NEW notifications {
+            caption = badged('Assignees', countAssignees(o));
+            MOVE BOX(e) { caption = ''; }
+        }
+    }
+}
