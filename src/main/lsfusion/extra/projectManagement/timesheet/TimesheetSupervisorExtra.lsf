@@ -1,0 +1,7 @@
+MODULE TimesheetSupervisorExtra;
+
+REQUIRE TimesheetSupervisor;
+
+EXTEND FORM timesheetSupervisor
+    PROPERTIES (e) READONLY MasterData.name, nameDepartment BEFORE firstName (e)
+;

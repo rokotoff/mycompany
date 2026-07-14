@@ -1,0 +1,6 @@
+MODULE ProjectManagementExtra;
+
+REQUIRE TimesheetPersonalEmployee,
+        TimesheetSupervisorExtra;
+
+

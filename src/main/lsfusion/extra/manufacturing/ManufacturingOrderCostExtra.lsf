@@ -1,0 +1,16 @@
+MODULE ManufacturingOrderCostExtra;
+
+REQUIRE ManufacturingOrderCost;
+
+NAMESPACE Manufacturing;
+
+taxCost 'Налог труда' (ManufacturingOrder o) = NUMERIC[14,2] (laborCost(o) * 0.33) MATERIALIZED;
+
+totalCostWithTax 'Себестоимость с налогами' (ManufacturingOrder o) = totalCost(o) (+) taxCost(o);
+
+EXTEND CLASS ManufacturingCostType{
+    
+}
+EXTEND FORM manufacturingOrders
+    PROPERTIES(o) READONLY taxCost, totalCostWithTax
+;

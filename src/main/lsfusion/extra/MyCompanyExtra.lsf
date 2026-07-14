@@ -1,0 +1,6 @@
+MODULE MyCompanyExtra;
+
+REQUIRE MyCompanyCustom, MyCompanyRu,
+        ManufacturingOrderExtra, /* ManufacturingOrderCostExtra, */
+        ProjectManagementExtra,
+        PayslipBatchExtension;
