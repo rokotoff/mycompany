@@ -1,0 +1,25 @@
+MODULE ProjectManufacturingOrderCostTax;
+
+REQUIRE ProjectManufacturingOrderCost, ProjectManufacturingOrderTimeEntry, ProjectTimeEntryPayslip, ManufacturingOrderCost, ManufacturingOrderReport;
+
+NAMESPACE ProjectManufacturing;
+
+// Новый вид затрат
+EXTEND CLASS ManufacturingCostType {
+    laborTax 'Налог труда'
+}
+
+// Налог = 33% от стоимости труда, вычисленный напрямую через зарплаты ManufacturingCostType.labor
+cost (ManufacturingOrder o, ManufacturingCostType t) += WHEN t = ManufacturingCostType.laborTax THEN NUMERIC[14,2]((GROUP SUM salary(TimeEntry e) IF manufacturingOrder(e) = o)*0.33);
+
+// Свойство для обратной совместимости
+laborTaxCost 'Налог на ЗП' (ManufacturingOrder o) = cost(o, ManufacturingCostType.laborTax);
+
+// Отображаем на формах после laborCost
+EXTEND FORM manufacturingOrders
+    PROPERTIES(o) READONLY AFTER laborCost(o) laborTaxCost
+;
+
+EXTEND FORM manufacturingOrderReport
+    PROPERTIES(o) READONLY MEASURE AFTER laborCost(o) laborTaxCost
+;

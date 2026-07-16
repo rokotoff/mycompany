@@ -1,9 +1,16 @@
 MODULE PayslipBatchExtension;
 
-REQUIRE Payslip, PayslipBatch, MasterData, Employee;
+REQUIRE Payslip, PayslipBatch, MasterData, Employee, TimeEntry, ProjectTimeEntryPayslip;
+
+NAMESPACE ProjectManagement;
 
 nameDepartment 'Department' (Payslip o) = nameDepartment(employee(o));
+totalHours 'Часов за период' (Payslip p) = GROUP SUM quantity(PayslipTimeEntry pe) IF payslip(pe) = p;
 
 EXTEND FORM payslipBatch
     PROPERTIES (p) READONLY nameEmployee AFTER number(p), nameDepartment AFTER nameEmployee(p)
+;
+
+EXTEND FORM payslipBatch
+    PROPERTIES (p) READONLY totalHours AFTER nameDepartment(p)
 ;
