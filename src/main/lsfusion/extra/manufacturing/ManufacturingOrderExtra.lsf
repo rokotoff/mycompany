@@ -1,0 +1,20 @@
+MODULE ManufacturingOrderExtra;
+
+REQUIRE ManufacturingOrder;
+
+planeDateTime 'Плановое Завершение' = DATA DATE (ManufacturingOrder) IN id;
+
+EXTEND FORM manufacturingOrder
+    PROPERTIES(o) READONLYIF readonly(o)
+    planeDateTime
+;
+
+DESIGN manufacturingOrder {
+    headerLeft {
+        MOVE PROPERTY(planeDateTime(o)) AFTER PROPERTY (scheduledDateTime(o));
+    }
+}
+
+EXTEND FORM manufacturingOrders
+    PROPERTIES (o) READONLY planeDateTime AFTER scheduledDateTime(o)
+;

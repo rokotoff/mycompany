@@ -1,0 +1,9 @@
+MODULE PayslipBatchExtension;
+
+REQUIRE Payslip, PayslipBatch, MasterData, Employee;
+
+nameDepartment 'Department' (Payslip o) = nameDepartment(employee(o));
+
+EXTEND FORM payslipBatch
+    PROPERTIES (p) READONLY nameEmployee AFTER number(p), nameDepartment AFTER nameEmployee(p)
+;

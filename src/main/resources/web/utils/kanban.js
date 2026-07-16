@@ -1,7 +1,8 @@
 // Shared rendering for the task and lead kanban boards (CUSTOM components).
 // taskkanban.js / leadkanban.js call kanban(config) with entity-specific field accessors;
 // everything common — board/column/card scaffold, avatars, localized dates, drag-and-drop,
-// scroll preservation and drop-jitter suppression — lives here.
+// scroll preservation, drop-jitter suppression, and the click-to-open preview popup (the only
+// Edit/Delete affordance; double-click also edits) — lives here.
 
 // deterministic hue from a string — same hashing the shift schedule / activity calendar use for
 // avatars, so a person keeps the same colour across the app
@@ -17,6 +18,48 @@ function kanbanInitialsOf(str) {
     if (!parts.length) return "?";
     let s = parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "");
     return s.toUpperCase();
+}
+
+// the server (Employee.avatarBase64) sends a complete data: URL for the avatar, so just pass it through
+// (null when the person has no avatar). No client-side MIME guessing.
+function kanbanPhotoUrl(b64) {
+    return b64 || null;
+}
+
+// Render an avatar into `el`. The photo is a data: URL from the OPTIONS employee list (already in
+// memory, nothing to fetch), so paint it as the background SYNCHRONOUSLY. Drawing the initials
+// placeholder first and swapping to the photo on a later img.onload would make every avatar flash to
+// initials and back on each board rebuild (e.g. after a reassign, when update() tears down and
+// recreates all cards) — that's the "flicker". We still preload an Image purely to detect a
+// bad/corrupt data URL and, only then, fall back to initials. fallback() must set the initials text
+// + --ahue hue. __avUrl stamps this call's token so a stale onerror can't clobber a newer render.
+function kanbanRenderAvatar(el, b64, fallback) {
+    let url = kanbanPhotoUrl(b64);
+    el.__avUrl = url;
+    if (!url) {
+        el.classList.remove("has-photo");
+        el.style.backgroundImage = "";
+        el.style.backgroundColor = "";
+        fallback();
+        return;
+    }
+    // show the photo straight away — no placeholder frame
+    el.textContent = "";
+    el.classList.add("has-photo");
+    el.style.backgroundImage = "url('" + url + "')";
+    el.style.backgroundSize = "cover";
+    el.style.backgroundPosition = "center";
+    el.style.backgroundColor = "transparent";
+    // ...and only revert to initials if the data URL turns out to be undecodable
+    let img = new Image();
+    img.onerror = function () {
+        if (el.__avUrl !== url) return; // superseded by a newer render
+        el.classList.remove("has-photo");
+        el.style.backgroundImage = "";
+        el.style.backgroundColor = "";
+        fallback();
+    };
+    img.src = url;
 }
 
 // localized short weekday (Mon-first) and full month names for the given locale, mirroring the
@@ -63,6 +106,27 @@ function kanbanHeader(type, name) {
     return (type ? type : "") + (name && type ? " : " : "") + (name ? name : "");
 }
 
+// Map an lsFusion Color id (see utils/Color.lsf) to a badge's colour classes. Base ids (warning,
+// danger, secondary, …) use Bootstrap's solid .text-bg-*, which the web client bundles. The "*Subtle"
+// ids (warningSubtle, dangerSubtle, …) have NO Bootstrap equivalent in the bundle — there is no
+// .text-bg-*-subtle utility, and lsFusion ships neither .text-*-emphasis nor .border-*-subtle — so
+// "text-bg-warningSubtle" matched nothing and the badge rendered with no colour. Subtle ids instead
+// get the board's own .kanban-tag-subtle-* classes (defined in kanban.css), which paint from the
+// --bs-*-bg-subtle vars (themed in dark mode where lsFusion defines them) with a fixed RGB fallback.
+function kanbanBadgeClasses(id, fallback) {
+    id = id || fallback;
+    const subtle = /^(.+)Subtle$/.exec(id);
+    if (subtle) return "kanban-tag-subtle kanban-tag-subtle-" + subtle[1];
+    return "text-bg-" + id;
+}
+
+// The base Bootstrap colour name behind a Color id, dropping the "Subtle" suffix (warningSubtle ->
+// warning). Used for the thin card left-accent and the popup top border, where a full-strength hue
+// reads better than the near-invisible subtle tone (the soft fill is reserved for the badges).
+function kanbanBaseColor(id) {
+    return id ? id.replace(/Subtle$/, "") : id;
+}
+
 // a calendar-icon + localized-date row; `overdue` paints it red (used for a passed due date)
 function kanbanDateRow(cls, dateVal, duration, locale, overdue) {
     let row = document.createElement("div");
@@ -77,11 +141,53 @@ function kanbanDateRow(cls, dateVal, duration, locale, overdue) {
     return row;
 }
 
-// after a drag, persist the new order of the cards in a column
-function kanbanReorder(controller, elements, key) {
+// after a drag, collect the new order of the cards in a column into a changeProperties batch.
+// Orders are 1-based: the web client turns a JS 0 into NULL on its way to the server, so a card
+// dropped at the top of a column would lose its order entirely if we sent 0.
+function kanbanCollectReorder(batch, elements, key) {
     for (let i = 0; i < elements.length; i++)
-        if (elements[i][key] && elements[i][key].currentOrder !== i)
-            controller.changeProperty("currentOrder", elements[i][key], i);
+        if (elements[i][key] && elements[i][key].currentOrder !== i + 1) {
+            batch.properties.push("currentOrder");
+            batch.objects.push(elements[i][key]);
+            batch.values.push(i + 1);
+        }
+}
+
+// Allowlist sanitizer for the stored rich-text description (RICHTEXT/HTML), shown in the hover popup.
+// Renders the Quill formatting while dropping scripts, event handlers, inline styles and unsafe URLs
+// so stored markup can't execute. Parsing happens in a detached <template> whose content is inert (no
+// scripts run, no images load); we rebuild from scratch keeping only allowed tags. Same sanitizer as
+// the comments / activities components.
+function kanbanSanitizeHtml(html) {
+    const ALLOWED = { A: 1, B: 1, STRONG: 1, I: 1, EM: 1, U: 1, S: 1, P: 1, BR: 1, OL: 1, UL: 1, LI: 1, SPAN: 1, BLOCKQUOTE: 1, PRE: 1, CODE: 1, H1: 1, H2: 1, H3: 1, H4: 1 };
+    const SAFE_HREF = /^(https?:|mailto:|tel:|#|\/)/i;
+    const tpl = document.createElement("template");
+    tpl.innerHTML = String(html == null ? "" : html);
+    const clean = (src, dst) => {
+        for (const node of Array.from(src.childNodes)) {
+            if (node.nodeType === 3) {
+                dst.appendChild(document.createTextNode(node.nodeValue));
+            } else if (node.nodeType === 1 && ALLOWED[node.tagName]) {
+                const el = document.createElement(node.tagName);
+                if (node.getAttribute("class")) el.setAttribute("class", node.getAttribute("class"));
+                if (node.tagName === "A") {
+                    const href = (node.getAttribute("href") || "").trim();
+                    if (SAFE_HREF.test(href)) {
+                        el.setAttribute("href", href);
+                        el.setAttribute("target", "_blank");
+                        el.setAttribute("rel", "noopener noreferrer");
+                    }
+                }
+                clean(node, el);
+                dst.appendChild(el);
+            } else if (node.nodeType === 1) {
+                clean(node, dst); // disallowed tag: keep its sanitized children, drop the wrapper
+            }
+        }
+    };
+    const out = document.createElement("div");
+    clean(tpl.content, out);
+    return out.innerHTML;
 }
 
 // config = {
@@ -95,9 +201,267 @@ function kanbanReorder(controller, elements, key) {
 //   created(item)  -> {date,text}|null,   // creation date at the top, never highlighted
 //   assignee(item) -> string,             // assignee name (avatar + name); falsy = no block
 //   due(item)      -> {date,text}|null,   // due date footer, red once it has passed
+//   status(item)   -> string,             // popup only: status-name pill
+//   priority(item) -> string,             // popup only: priority name (coloured via item.idColorPriority)
+//   description(item) -> string|null,     // popup only: rich-text (HTML), sanitized before render
+//   assignProp,     // popup only: form-property alias for in-card reassignment —
+//                   //   changeProperty(alias, item, employeeId); needs OPTIONS.employees [{id,name}]
+//                   //   plus an ON CHANGE (INPUT LONG) handler on that property
+//   hours(item)    -> number|null,        // popup only: total logged hours, shown in the time row
+//   logTimeProp,    // popup only: action alias invoked (changeProperty) by the time row's + button
 // }
 function kanban(config) {
     const key = config.key;
+
+    // ---- click popup ("красивая форма-подсказка", mirroring the activity calendar's .acal-pop) ----
+    // One popup element is reused for every card. Clicking a card opens it; it previews the card and
+    // exposes only the two quick actions the user asked for — Edit and Delete. It stays open until the
+    // user clicks outside it, scrolls the board, drags a card, or runs an action.
+    function cancelHide(st) { if (st.hideTimer) { clearTimeout(st.hideTimer); st.hideTimer = null; } }
+    function hidePopup(st) { cancelHide(st); st.pop.style.display = "none"; st.popItem = null; }
+
+    // Bootstrap theme colour for a priority, matching the card's left-accent mapping in kanban.css,
+    // used here for the popup's top border so it reads as the same card.
+    const PRIO_VAR = { danger: "--bs-danger", warning: "--bs-warning", success: "--bs-success",
+                       info: "--bs-info", primary: "--bs-primary", secondary: "--bs-secondary" };
+
+    function popButton(cls, icon, label, title, onClick) {
+        let b = document.createElement("button");
+        b.type = "button";
+        b.className = "kanban-pop-btn " + cls;
+        if (title) b.title = title;
+        let i = document.createElement("i");
+        i.className = icon;
+        b.appendChild(i);
+        if (label) { let s = document.createElement("span"); s.textContent = label; b.appendChild(s); }
+        b.addEventListener("click", onClick);
+        return b;
+    }
+
+    function showPopup(st, item, anchor, locale, i18n, employees) {
+        cancelHide(st);
+        const pop = st.pop;
+        pop.className = "kanban-pop";
+        const prioColor = kanbanBaseColor(item.idColorPriority);
+        pop.style.borderTopColor = (prioColor && PRIO_VAR[prioColor])
+            ? "var(" + PRIO_VAR[prioColor] + ")" : "var(--bs-primary, #2563eb)";
+        pop.innerHTML = "";
+
+        // header (type : project / type : name) as a quiet uppercase label
+        let header = config.header(item);
+        if (header) {
+            let h = document.createElement("div");
+            h.className = "kanban-pop-type";
+            h.textContent = header;
+            pop.appendChild(h);
+        }
+
+        // status + priority badges (status is a neutral pill; priority is tinted with its colour)
+        let statusName = config.status ? config.status(item) : null;
+        let priorityName = config.priority ? config.priority(item) : null;
+        if (statusName || priorityName) {
+            let badges = document.createElement("div");
+            badges.className = "kanban-pop-badges";
+            if (statusName) {
+                let b = document.createElement("span");
+                b.className = "kanban-pop-status";
+                b.textContent = statusName;
+                badges.appendChild(b);
+            }
+            if (priorityName) {
+                let b = document.createElement("span");
+                b.className = "kanban-pop-prio badge rounded-pill " + kanbanBadgeClasses(item.idColorPriority, "secondary");
+                b.textContent = priorityName;
+                badges.appendChild(b);
+            }
+            pop.appendChild(badges);
+        }
+
+        // subtitle (author / customer)
+        let subtitle = config.subtitle(item);
+        if (subtitle) {
+            let s = document.createElement("div");
+            s.className = "kanban-pop-subtitle";
+            s.textContent = subtitle;
+            pop.appendChild(s);
+        }
+
+        // main text (task name) — leads carry the name in the header instead
+        let text = config.text ? config.text(item) : null;
+        if (text != null && text !== "") {
+            let t = document.createElement("div");
+            t.className = "kanban-pop-title";
+            t.textContent = text;
+            pop.appendChild(t);
+        }
+
+        // money figure (lead expected revenue)
+        let amount = config.amount ? config.amount(item) : null;
+        if (amount != null && amount !== "") {
+            let a = document.createElement("div");
+            a.className = "kanban-pop-amount";
+            a.textContent = kanbanFormatAmount(amount, locale);
+            pop.appendChild(a);
+        }
+
+        // created / due dates (due turns red once it has passed)
+        let meta = document.createElement("div");
+        meta.className = "kanban-pop-meta";
+        let created = config.created(item);
+        if (created && created.date)
+            meta.appendChild(kanbanDateRow("kanban-pop-row", created.date, created.text, locale, false));
+        let due = config.due(item);
+        if (due && due.date) {
+            let overdue = moment(due.date).isBefore(moment(), "day");
+            meta.appendChild(kanbanDateRow("kanban-pop-row", due.date, due.text, locale, overdue));
+        }
+        if (meta.childElementCount) pop.appendChild(meta);
+
+        // assignee — when the board provides an assign handler + an employee list, show a picker so
+        // you can reassign straight from the card (like activities); the label shows who's assigned
+        // now and clicking an avatar reassigns. Otherwise just show the current assignee.
+        let assignee = config.assignee ? config.assignee(item) : null;
+        // avatars are keyed by employee id (not display name) so duplicate names never show the wrong face
+        let asgId = config.assigneeId ? config.assigneeId(item) : null;
+        let popPhotoById = {};
+        (employees || []).forEach(function (e) { if (e && e.avatar && e.id != null) popPhotoById[String(e.id)] = e.avatar; });
+        if (config.assignProp && employees && employees.length) {
+            let asg = document.createElement("div");
+            asg.className = "kanban-pop-assign";
+            let lab = document.createElement("div");
+            lab.className = "kanban-pop-assign-label";
+            let licon = document.createElement("i");
+            licon.className = "bi bi-person";
+            lab.appendChild(licon);
+            let who = document.createElement("span");
+            who.textContent = assignee || (i18n && i18n.unassigned) || "Unassigned";
+            lab.appendChild(who);
+            asg.appendChild(lab);
+            let avs = document.createElement("div");
+            avs.className = "kanban-pop-assign-avs";
+            for (const emp of employees) {
+                let ab = document.createElement("button");
+                ab.type = "button";
+                ab.className = "kanban-pop-asg-av" + (String(emp.id) === String(asgId) ? " current" : "");
+                ab.title = emp.name;
+                kanbanRenderAvatar(ab, emp.avatar, function () {
+                    ab.textContent = kanbanInitialsOf(emp.name);
+                    ab.style.setProperty("--ahue", kanbanHueOf(emp.name));
+                });
+                ab.addEventListener("click", function () {
+                    st.controller.changeProperty(config.assignProp, item, emp.id);
+                    hidePopup(st);
+                });
+                avs.appendChild(ab);
+            }
+            asg.appendChild(avs);
+            pop.appendChild(asg);
+        } else if (assignee) {
+            let row = document.createElement("div");
+            row.className = "kanban-pop-assignee";
+            let avatar = document.createElement("span");
+            avatar.className = "kanban-card-avatar";
+            kanbanRenderAvatar(avatar, popPhotoById[String(asgId)], function () {
+                avatar.style.setProperty("--ahue", kanbanHueOf(assignee));
+                avatar.textContent = kanbanInitialsOf(assignee);
+            });
+            row.appendChild(avatar);
+            let name = document.createElement("span");
+            name.className = "kanban-pop-assignee-name";
+            name.textContent = assignee;
+            row.appendChild(name);
+            pop.appendChild(row);
+        }
+
+        // logged hours + a quick "log time" button (tasks): shows the running total and opens the
+        // time-entry form (newTimeEntry) without leaving the board
+        let hours = config.hours ? config.hours(item) : null;
+        if (config.logTimeProp || (hours != null && hours !== "")) {
+            let timeRow = document.createElement("div");
+            timeRow.className = "kanban-pop-time";
+            let ticon = document.createElement("i");
+            ticon.className = "bi bi-clock-history";
+            timeRow.appendChild(ticon);
+            let tlabel = document.createElement("span");
+            tlabel.className = "kanban-pop-time-label";
+            tlabel.textContent = ((i18n && i18n.hours) || "Hours") + ": "
+                + (hours != null && hours !== "" ? kanbanFormatAmount(hours, locale) : "0");
+            timeRow.appendChild(tlabel);
+            if (config.logTimeProp) {
+                let logBtn = document.createElement("button");
+                logBtn.type = "button";
+                logBtn.className = "kanban-pop-time-add";
+                logBtn.title = (i18n && i18n.logTime) || "Time entry";
+                let pi = document.createElement("i");
+                pi.className = "bi bi-plus-lg";
+                logBtn.appendChild(pi);
+                logBtn.addEventListener("click", function () {
+                    hidePopup(st);
+                    st.controller.changeProperty(config.logTimeProp, item);
+                });
+                timeRow.appendChild(logBtn);
+            }
+            pop.appendChild(timeRow);
+        }
+
+        // tags
+        if (item.tags && item.tags.length) {
+            let tags = document.createElement("div");
+            tags.className = "kanban-pop-tags";
+            for (const tag of item.tags) {
+                let badge = document.createElement("span");
+                badge.className = "kanban-card-tag badge rounded-pill " + kanbanBadgeClasses(tag.idColor, "secondary");
+                badge.textContent = tag.name;
+                tags.appendChild(badge);
+            }
+            pop.appendChild(tags);
+        }
+
+        // description (RICHTEXT/HTML) — sanitized; skipped when it's empty rich-text (e.g. "<p><br></p>")
+        let description = config.description ? config.description(item) : null;
+        if (description) {
+            let clean = kanbanSanitizeHtml(description);
+            let probe = document.createElement("div");
+            probe.innerHTML = clean;
+            if (probe.textContent.trim()) {
+                let d = document.createElement("div");
+                d.className = "kanban-pop-desc ql-editor ql-bubble";
+                d.innerHTML = clean;
+                pop.appendChild(d);
+            }
+        }
+
+        // actions — only Edit and Delete (labels localized server-side via OPTIONS i18n)
+        let editLabel = (i18n && i18n.edit) || "Edit";
+        let deleteLabel = (i18n && i18n.delete) || "Delete";
+        let actions = document.createElement("div");
+        actions.className = "kanban-pop-actions";
+        actions.appendChild(popButton("kanban-pop-edit", "bi bi-pencil", editLabel, editLabel, function () {
+            hidePopup(st);
+            st.controller.changeProperty("edit", item);
+        }));
+        actions.appendChild(popButton("kanban-pop-delete", "bi bi-trash", "", deleteLabel, function () {
+            hidePopup(st);
+            st.controller.changeProperty("delete", item);
+        }));
+        pop.appendChild(actions);
+
+        // position next to the card (fixed → not clipped by the board/column overflow), flipping to
+        // the card's left and clamping vertically so it always stays on-screen
+        pop.style.display = "block";
+        const ar = anchor.getBoundingClientRect();
+        const pw = pop.offsetWidth, ph = pop.offsetHeight;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        let left = ar.right + 8;
+        if (left + pw > vw - 6) left = ar.left - pw - 8;
+        if (left < 6) left = Math.max(6, (vw - pw) / 2);
+        let top = ar.top - 2;
+        if (top + ph > vh - 6) top = Math.max(6, vh - ph - 6);
+        if (top < 6) top = 6;
+        pop.style.left = Math.round(left) + "px";
+        pop.style.top = Math.round(top) + "px";
+        st.popItem = item;
+    }
 
     return {
         render: function (element, controller) {
@@ -106,11 +470,49 @@ function kanban(config) {
             board.classList.add(key + "-kanban"); // entity hook for any board-specific css
             element.appendChild(board);
             element.kanban = board;
+
+            // single hover popup, reused for every card. Appended to <body> (not `element`) so it
+            // escapes the form's stacking contexts and panel/column overflow — otherwise the form's
+            // own panels and filter fields paint over it. Fixed-positioned next to the hovered card.
+            if (element.kanbanPop && element.kanbanPop.pop && element.kanbanPop.pop.parentNode)
+                element.kanbanPop.pop.parentNode.removeChild(element.kanbanPop.pop); // guard a re-render
+            let pop = document.createElement("div");
+            pop.className = "kanban-pop";
+            pop.style.display = "none";
+            document.body.appendChild(pop);
+            const st = { pop: pop, hideTimer: null, popItem: null, dragging: false, controller: controller };
+            // any scroll inside the board (capture also catches the column bodies) dismisses the popup,
+            // since it's fixed-positioned and would otherwise float away from its card
+            board.addEventListener("scroll", function () { hidePopup(st); }, true);
+            // the popup opens on a card click now, so a click anywhere outside it closes it. A click on
+            // a card is skipped here (that card's own handler reopens the popup for it).
+            const onDocClick = function (e) {
+                if (st.pop.style.display === "none") return;
+                if (st.pop.contains(e.target)) return;
+                if (e.target.closest && e.target.closest(".kanban-card")) return;
+                hidePopup(st);
+            };
+            document.addEventListener("click", onDocClick);
+            element.kanbanDocClick = onDocClick;
+            element.kanbanPop = st;
         },
 
         update: function (element, controller, list, options) {
             const board = element.kanban;
             const locale = options && options.locale;
+            const i18n = (options && options.i18n) || {};
+            const employees = (options && options.employees) || [];
+            // photo lookup by employee id (not name — duplicate names must not show the wrong face),
+            // built once from the OPTIONS employee list so photos aren't duplicated onto every card.
+            // A board card is always an OPEN item assigned to its assignee, and taskEmployees()/
+            // leadEmployees() include exactly the employees with an open assignment, so every visible
+            // card's assignee is guaranteed to be present here (no missing-photo gap).
+            const avatarById = {};
+            employees.forEach(function (e) { if (e && e.avatar && e.id != null) avatarById[String(e.id)] = e.avatar; });
+            const st = element.kanbanPop;
+            st.controller = controller;
+            // the cards this popup was anchored to are about to be torn down and rebuilt
+            hidePopup(st);
 
             // A drop calls changeProperty, which makes lsFusion re-run update() and rebuild the
             // whole board. Capture each column's scroll (and the board's horizontal scroll) so the
@@ -168,7 +570,7 @@ function kanban(config) {
                 statusNew.innerHTML = "<i class=\"bi bi-plus\"></i>";
                 statusHeader.appendChild(statusNew);
                 statusNew.addEventListener("click", function () {
-                    controller.changeProperty(config.createStatus, null, status.id);
+                    controller.form.exec(config.createStatus, status.id);
                 });
 
                 let statusBody = document.createElement("div");
@@ -176,7 +578,7 @@ function kanban(config) {
 
                 let count = 0, total = 0;
                 for (const item of list)
-                    if (item.status === status.id.toString()) {
+                    if (item.status === status.id) {
                         count++;
                         if (config.amount) total += Number(config.amount(item)) || 0;
                         statusBody.appendChild(buildCard(item));
@@ -210,17 +612,38 @@ function kanban(config) {
             board.scrollLeft = prevScrollLeft;
 
             element.drake.on("drop", function (el, target, source, sibling) {
-                if (el[key].status !== target.status.id.toString())
-                    controller.changeProperty("status", el[key], target.status.id);
-                kanbanReorder(controller, target.children, key);
+                // one changeProperties batch (orders first, status last) = one server request.
+                // Separate changeProperty calls each go out as their own request; the form refresh
+                // after the first one rebuilds the board and the later ones are applied against a
+                // session the user may already be dragging in again — and each costs a round-trip.
+                let batch = { properties: [], objects: [], values: [] };
+                kanbanCollectReorder(batch, target.children, key);
+                if (el[key].status !== target.status.id) {
+                    batch.properties.push("status");
+                    batch.objects.push(el[key]);
+                    batch.values.push(target.status.id);
+                }
+                if (batch.properties.length)
+                    controller.changeProperties(batch.properties, batch.objects, batch.values);
             });
+
+            // suppress the hover popup while dragging (and hide any that's open), so it can't pop up
+            // under the dragged card or over a drop target
+            element.drake.on("drag", function () { st.dragging = true; hidePopup(st); });
+            element.drake.on("dragend", function () { st.dragging = false; });
 
             function buildCard(item) {
                 let card = document.createElement("div");
                 card.classList.add("kanban-card");
                 card.classList.add("card");
-                if (item.idColorPriority) card.classList.add("text-bg-" + item.idColorPriority);
-                card.addEventListener("click", function () { controller.changeObject(item, true, card); });
+                if (item.idColorPriority) card.classList.add("text-bg-" + kanbanBaseColor(item.idColorPriority));
+                // a click selects the card and opens its popup (no standard edit dialog); the popup
+                // and double-click are the edit/delete affordances
+                card.addEventListener("click", function () {
+                    controller.changeObject(item, true, card);
+                    showPopup(st, item, card, locale, i18n, employees);
+                });
+                card.addEventListener("dblclick", function () { hidePopup(st); controller.changeProperty("edit", item); });
 
                 let header = config.header(item);
                 if (header) {
@@ -281,10 +704,7 @@ function kanban(config) {
                     tags.classList.add("list-group-item");
                     for (const tag of item.tags) {
                         let badge = document.createElement("span");
-                        badge.classList.add("kanban-card-tag");
-                        badge.classList.add("badge");
-                        badge.classList.add("rounded-pill");
-                        badge.classList.add("text-bg-" + (tag.idColor ? tag.idColor : "secondary"));
+                        badge.className = "kanban-card-tag badge rounded-pill " + kanbanBadgeClasses(tag.idColor, "secondary");
                         badge.textContent = tag.name;
                         tags.appendChild(badge);
                     }
@@ -299,8 +719,11 @@ function kanban(config) {
                     li.classList.add("list-group-item");
                     let avatar = document.createElement("span");
                     avatar.classList.add("kanban-card-avatar");
-                    avatar.style.setProperty("--ahue", kanbanHueOf(assignee));
-                    avatar.textContent = kanbanInitialsOf(assignee);
+                    let cardAsgId = config.assigneeId ? config.assigneeId(item) : null;
+                    kanbanRenderAvatar(avatar, avatarById[String(cardAsgId)], function () {
+                        avatar.style.setProperty("--ahue", kanbanHueOf(assignee));
+                        avatar.textContent = kanbanInitialsOf(assignee);
+                    });
                     li.appendChild(avatar);
                     let name = document.createElement("span");
                     name.classList.add("kanban-card-assigned-name");
@@ -324,6 +747,13 @@ function kanban(config) {
 
         clear: function (element) {
             if (element.drake) element.drake.destroy();
+            if (element.kanbanDocClick) document.removeEventListener("click", element.kanbanDocClick);
+            if (element.kanbanPop) {
+                hidePopup(element.kanbanPop);
+                // the popup lives on <body>; remove it so it doesn't outlive the board
+                let p = element.kanbanPop.pop;
+                if (p && p.parentNode) p.parentNode.removeChild(p);
+            }
         }
     };
 }

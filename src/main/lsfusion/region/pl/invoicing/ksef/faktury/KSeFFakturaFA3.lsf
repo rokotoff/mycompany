@@ -174,11 +174,11 @@ RodzajFaktury = DATA LOCAL STRING();
 
 PrzyczynaKorekty = DATA STRING ();
 DataWystFaKorygowanej = DATA STRING ();
-NrFaKorygowanej = DATA STRING[50] ();
+NrFaKorygowanej = DATA STRING[256] ();
 NrKSeFFaKorygowanej = DATA STRING[36] ();
 
 NrKSeFZN = DATA LOCAL INTEGER(INTEGER);
-NrFaZaliczkowej = DATA LOCAL STRING[50](INTEGER);
+NrFaZaliczkowej = DATA LOCAL STRING[256](INTEGER);
 NrKSeFFaZaliczkowej = DATA LOCAL STRING[36](INTEGER);
 
 NrWierszaFa = DATA LOCAL STRING(INTEGER);
@@ -327,7 +327,6 @@ FORM FA3XmlImport FORMEXTID '=http://crd.gov.pl/wzor/2025/06/25/13775/:Faktura'
         PKWIU EXTID '=http://crd.gov.pl/wzor/2025/06/25/13775/:PKWIU',
         CN EXTID '=http://crd.gov.pl/wzor/2025/06/25/13775/:CN',
         PKOB EXTID '=http://crd.gov.pl/wzor/2025/06/25/13775/:PKOB'
-    FILTERS imported(faWiersz)
 
     PROPERTIES() IN Platnosc
         Zaplacono EXTID '=http://crd.gov.pl/wzor/2025/06/25/13775/:Zaplacono',
@@ -412,7 +411,7 @@ import (Faktura nf) {
         value(s) <- StopkaFaktury(si);
     }
 
-    FOR imported(INTEGER faWiersz) DO NEW fw = FaWiersz {
+    FOR NrWierszaFa(INTEGER faWiersz) DO NEW fw = FaWiersz {
         faktura(fw) <- nf;
         NrWierszaFa(fw) <- INTEGER(NrWierszaFa(faWiersz));
         GTIN(fw) <- GTIN(faWiersz);
