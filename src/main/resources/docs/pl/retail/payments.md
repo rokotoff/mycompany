@@ -17,13 +17,15 @@ Konfiguracja metod płatności: zobacz [Ustawienia](settings.md).
 3. Wprowadź kwoty dla jednej lub kilku metod płatności.
 4. Potwierdź płatność.
 
+> Jeśli nie wprowadzono żadnej kwoty, potwierdzenie przypisze całą kwotę **„Do zapłaty”** do aktualnie wybranej metody płatności.
+
 ### Reszta
 
-Jeśli wprowadzono więcej niż **Do zapłaty** (zwykle dla płatności gotówkowych), system wyliczy **resztę**.
+Jeśli gotówką wprowadzono więcej niż **Do zapłaty**, system wyliczy **resztę**. Tylko gotówką można wprowadzić więcej niż kwotę do zapłaty.
 
 ### Walidacja danych wejściowych
 
-W zależności od ustawień mogą obowiązywać walidacje:
+Przy wprowadzaniu kwot zawsze obowiązują walidacje:
 
 - nie możesz potwierdzić płatności, jeśli wprowadzona kwota jest niewystarczająca;
 - nie możesz „nadpłacić” metodami bezgotówkowymi (na przykład kartą bankową) ponad **Do zapłaty**;
@@ -31,6 +33,6 @@ W zależności od ustawień mogą obowiązywać walidacje:
 
 ## Płatność zwrotu
 
-Podczas realizacji zwrotu wykonywana jest wypłata dla klienta. Dostępne metody płatności i reguły dzielenia kwot są określane przez ustawienia.
+Podczas realizacji zwrotu wykonywana jest wypłata dla klienta. Reguły dzielenia kwot są stałe: daną metodą płatności nie można zwrócić więcej, niż zapłacono nią w oryginalnym paragonie, a łączna kwota wypłaty musi być równa kwocie zwrotu. Ten limit dla metody jest sprawdzany **dla każdego zwrotu** względem oryginalnego paragonu — wcześniejsze zwroty tego samego paragonu nie są odejmowane, więc nie jest to limit skumulowany dla wielu zwrotów. Ustawienia nie zmieniają tych limitów kwot, ale określają dostępność metod płatności oraz typ płatności / konto kasy, na które księgowana jest każda wypłata.
 
 Szczegóły krok po kroku oraz typowe ograniczenia: [Zwroty](returns.md).

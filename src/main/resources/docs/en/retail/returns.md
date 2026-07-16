@@ -27,7 +27,8 @@ This is the main scenario: the return is processed based on a previously issued 
 On the **Session** tab, the **“Cash receipts”** list shows sales receipts. Switch its filter to find the required receipt:
 
 - **“By session”** — receipts of the current session;
-- **“By POS”** — receipts of the cash register.
+- **“By POS”** — receipts of the cash register;
+- **“Same location”** — receipts of the cash register’s location.
 
 Select the original sales receipt in the list.
 
@@ -39,7 +40,7 @@ The system creates a return (a credit note) for the selected receipt and:
 
 - fills the **return partner** (the “Vendor” field) from the original receipt’s customer;
 - fills the return lines with the items of the original receipt;
-- copies prices and discounts so that the return amount matches the selected items and quantities.
+- copies each line’s **effective price after discount** and its taxes from the original sale, so the return amount matches the selected items and quantities.
 
 ### Step 3. Adjust items and quantities being returned
 
@@ -49,6 +50,8 @@ Check the return lines:
 2. If a line should not be returned, delete it from the return.
 
 If return quantity control is enabled in your configuration, the system will not allow returning more than was sold in the original receipt.
+
+![Return on the POS screen](images/pos-return.png)
 
 ### Step 4. Pay out funds (return payment)
 
@@ -60,9 +63,11 @@ The pay-out is processed in a separate return payment form:
 
 #### Important rule about payment methods
 
-The return payment is restricted: **you cannot refund more by a payment method than was paid by that method in the original receipt**, and the total refunded must equal the return amount.
+The return payment is restricted: **you cannot refund more by a payment method than was paid by that method in the original receipt**, and the total refunded must equal the return amount. The limit is checked per return against the original receipt (earlier returns of the same receipt are not deducted).
 
 Example: if the purchase was paid partly in cash and partly by bank card, then the return usually has to be split by the same payment methods within the paid amounts.
+
+![Return payment dialog](images/pos-return-payment.png)
 
 After confirming the return payment, POS usually creates a new receipt for further work.
 
@@ -81,4 +86,4 @@ Check that:
 
 ### No original receipt
 
-A POS return is always processed against an original sales receipt. If the original receipt cannot be found in the **“Cash receipts”** list, switch the filter to **“By POS”** to widen the search. A return without an original receipt is not supported at the POS.
+A POS return is always processed against an original sales receipt. If the original receipt cannot be found in the **“Cash receipts”** list, switch the filter to **“By POS”** or **“Same location”** to widen the search. A return without an original receipt is not supported at the POS.

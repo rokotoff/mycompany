@@ -24,10 +24,11 @@ To główny scenariusz: zwrot jest przetwarzany na podstawie wcześniej wystawio
 
 ### Krok 1. Znajdź oryginalny paragon
 
-Na zakładce **„Sesja”** lista **„Paragony sprzedaży”** pokazuje paragony sprzedaży. Przełącz jej filtr, aby znaleźć wymagany paragon:
+Na zakładce **„Sesja”** lista **„Paragony”** pokazuje paragony sprzedaży. Przełącz jej filtr, aby znaleźć wymagany paragon:
 
-- **„Wg sesji”** — paragony bieżącej sesji;
-- **„Wg POS”** — paragony kasy.
+- **„Według sesji”** — paragony bieżącej sesji;
+- **„Według pos”** — paragony kasy;
+- **„Według lokalizacji”** — paragony lokalizacji kasy.
 
 Wybierz na liście oryginalny paragon sprzedaży.
 
@@ -39,7 +40,7 @@ System utworzy zwrot (notę kredytową) dla wybranego paragonu i:
 
 - uzupełni **kontrahenta zwrotu** (pole „Dostawca”) na podstawie klienta z oryginalnego paragonu;
 - uzupełni pozycje zwrotu towarami z oryginalnego paragonu;
-- skopiuje ceny i rabaty tak, aby kwota zwrotu odpowiadała wybranym towarom i ilościom.
+- skopiuje z oryginalnej sprzedaży **cenę po rabacie** (efektywną) oraz podatki dla każdej pozycji, aby kwota zwrotu odpowiadała wybranym towarom i ilościom.
 
 ### Krok 3. Dostosuj towary i ilości zwracane
 
@@ -60,7 +61,7 @@ Wypłata jest realizowana w oddzielnym formularzu płatności zwrotu:
 
 #### Ważna zasada dotycząca metod płatności
 
-Płatność zwrotu jest ograniczona: **nie możesz zwrócić większej kwoty daną metodą płatności, niż zapłacono tą metodą w oryginalnym paragonie**, a łączna wypłacona kwota musi być równa kwocie zwrotu.
+Płatność zwrotu jest ograniczona: **nie możesz zwrócić większej kwoty daną metodą płatności, niż zapłacono tą metodą w oryginalnym paragonie**, a łączna wypłacona kwota musi być równa kwocie zwrotu. Limit jest sprawdzany dla każdego zwrotu względem oryginalnego paragonu (wcześniejsze zwroty tego samego paragonu nie są odejmowane).
 
 Przykład: jeśli zakup został opłacony częściowo gotówką, a częściowo kartą bankową, zwrot zwykle również musi zostać rozdzielony na te same metody płatności w ramach zapłaconych kwot.
 
@@ -81,4 +82,4 @@ Sprawdź, czy:
 
 ### Brak oryginalnego paragonu
 
-Zwrot na kasie jest zawsze realizowany na podstawie oryginalnego paragonu sprzedaży. Jeśli oryginalnego paragonu nie da się znaleźć na liście **„Paragony sprzedaży”**, przełącz filtr na **„Wg POS”**, aby poszerzyć wyszukiwanie. Zwrot bez oryginalnego paragonu nie jest obsługiwany na kasie.
+Zwrot na kasie jest zawsze realizowany na podstawie oryginalnego paragonu sprzedaży. Jeśli oryginalnego paragonu nie da się znaleźć na liście **„Paragony”**, przełącz filtr na **„Według pos”** lub **„Według lokalizacji”**, aby poszerzyć wyszukiwanie. Zwrot bez oryginalnego paragonu nie jest obsługiwany na kasie.
