@@ -3,4 +3,5 @@ MODULE MyCompanyExtra;
 REQUIRE MyCompanyCustom, MyCompanyRu,
         ManufacturingOrderExtra, ProjectManufacturingOrderCostTax,
         ProjectManagementExtra,
-        PayslipBatchExtension;
+        PayslipBatchExtension,
+        payslipTotalExtra;

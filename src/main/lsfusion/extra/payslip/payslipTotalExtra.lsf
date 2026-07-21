@@ -1,0 +1,13 @@
+MODULE payslipTotalExtra;
+
+REQUIRE PayslipTotal, Employee, PayslipBatchExtension;
+
+NAMESPACE Payroll;
+
+EXTEND FORM payslips
+    PROPERTIES (e) READONLY nameDepartment AFTER name(e)
+    PROPERTIES (tp) READONLY totalHours BEFORE netWage(tp)
+    FILTERGROUP active
+        FILTER '{Active}' active(e) 'F10' DEFAULT
+        FILTER 'Archived' archived(e) 'F9'
+;
