@@ -1,0 +1,8 @@
+MODULE EmployeeCommentExtension;
+
+REQUIRE Employee, Doc, FileUtils;   // макрос определён в одном из этих модулей
+
+NAMESPACE MasterData;
+
+// Добавляем комментарии к сотруднику — вкладка появится в блоке details
+@defineObjectComments(employee, e, details);
