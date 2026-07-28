@@ -18,3 +18,11 @@ DESIGN manufacturingOrder {
 EXTEND FORM manufacturingOrders
     PROPERTIES (o) READONLY planeDateTime AFTER scheduledDateTime(o)
 ;
+
+statusMfgFile 'Статус/Примечание' = DATA ISTRING[50] (ManufacturingOrderFile);
+
+EXTEND FORM manufacturingOrder
+    PROPERTIES (of) statusMfgFile AFTER description(of)
+;
+
+
