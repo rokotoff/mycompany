@@ -1,7 +1,7 @@
 MODULE MyCompanyExtra;
 
 REQUIRE MyCompanyCustom, MyCompanyRu,
-        ManufacturingOrderExtra, ProjectManufacturingOrderCostTax,
+        ManufacturingOrderExtra, ProjectManufacturingOrderCostTax, ManufacturingOrderMaxNotificationExtra,
         ProjectManagementExtra,
         PayslipBatchExtension,
         payslipTotalExtra,

@@ -1,0 +1,22 @@
+MODULE ManufacturingOrderMaxNotificationExtra;
+
+REQUIRE ManufacturingOrderNotification, MaxMessenger, ManufacturingOrder, Comments, Employee;
+
+NAMESPACE Manufacturing;
+
+// Используем существующую функцию, но меняем первый заголовок
+mentionMessage 'Сообщение об упоминании' (ManufacturingOrderComment c) = CONCAT '\n',
+    '💬 Упоминание',
+    '📋 Заказ №' + number(manufacturingOrder(c)),
+    '👤 ' + fullName(user(c)),
+    '',
+    [FORMULA STRING 'btrim(regexp_replace(regexp_replace($1, \'</p>|<br[^>]*>\', chr(10), \'gi\'), \'<[^>]+>\', \'\', \'g\'))'](text(c));
+
+// Отправка уведомлений упомянутым сотрудникам
+WHEN SET(ManufacturingOrderComment c IS ManufacturingOrderComment) AND
+    mentioned(c, Employee e) AND
+    chat(e) AND
+    NOT user(c) = e
+    DO {
+    sendMessage(chat(e), mentionMessage(c));
+}
