@@ -4,15 +4,23 @@ REQUIRE ProjectManufacturingOrder, MaxMessenger, ProjectAssignment;
 
 NAMESPACE Manufacturing;
 
-assigned 'Assigned' = DATA BOOLEAN (ManufacturingOrder, Employee);
-sendToMax 'Max' = DATA BOOLEAN (ManufacturingOrder, Employee);
-sendToEmail 'Email' = DATA BOOLEAN (ManufacturingOrder, Employee);
+CLASS ManufacturingOrderAssignee 'Assignee';
 
-countAssignees (ManufacturingOrder o) = GROUP SUM 1 IF assigned(o, Employee e);
+manufacturingOrder = DATA ManufacturingOrder (ManufacturingOrderAssignee) NONULL DELETE INDEXED;
+employee = DATA Employee (ManufacturingOrderAssignee) NONULL INDEXED;
+nameEmployee 'Employee' (ManufacturingOrderAssignee a) = name(employee(a));
+
+sendToMax 'Max' = DATA BOOLEAN (ManufacturingOrderAssignee);
+sendToEmail 'Email' = DATA BOOLEAN (ManufacturingOrderAssignee);
+
+countAssignees (ManufacturingOrder o) = GROUP SUM 1 IF manufacturingOrder(ManufacturingOrderAssignee a) = o;
 
 WHEN (SETCHANGED(project(ManufacturingOrder o)) OR SETCHANGED(scheduledDateTime(o)))
     AND project(o) AND scheduledDateTime(o) AND NOT countAssignees(o) DO {
-    assigned(o, Employee e) <- TRUE WHERE assigned(project(o), e, DATE(scheduledDateTime(o)));
+    FOR assigned(project(o), Employee e, DATE(scheduledDateTime(o))) DO NEW a = ManufacturingOrderAssignee {
+        manufacturingOrder(a) <- o;
+        employee(a) <- e;
+    }
 }
 
 //notifications
@@ -44,11 +52,10 @@ sendNotificationManufacturingOrderEmail(ManufacturingOrder o, Employee e, STRING
 }
 
 sendNotificationManufacturingOrder(ManufacturingOrder o, STRING s)+{
-    FOR assigned(o, Employee e) AND sendToEmail(o, e) DO {
-        sendNotificationManufacturingOrderEmail(o, e, s);
+    FOR manufacturingOrder(ManufacturingOrderAssignee a) = o AND sendToEmail(a) DO {
+        sendNotificationManufacturingOrderEmail(o, employee(a), s);
     }
 }
-
 
 chat 'Чат Max' = DATA Chat(Employee);
 nameChat 'Чат Max' (Employee e)= name(chat(e));
@@ -62,40 +69,28 @@ DESIGN employee {
         MOVE PROPERTY (nameChat(e));
     }
 }
+
 sendNotificationManufacturingOrderMessenger(ManufacturingOrder o, Employee e, STRING s){
     sendMessage(chat(e), s);
 }
 
 sendNotificationManufacturingOrder(ManufacturingOrder o, STRING s)+{
-    FOR assigned(o, Employee e) AND sendToMax(o, e) AND chat(e) DO {
-        sendNotificationManufacturingOrderMessenger(o, e, s);
+    FOR manufacturingOrder(ManufacturingOrderAssignee a) = o AND sendToMax(a) AND chat(employee(a)) DO {
+        sendNotificationManufacturingOrderMessenger(o, employee(a), s);
     }
-}
-
-addAssignee 'Add' (ManufacturingOrder o) {
-    DIALOG employees OBJECTS e INPUT DO {
-        assigned(o, e) <- TRUE;
-    }
-}
-
-unassign 'Remove' (ManufacturingOrder o, Employee e) {
-    assigned(o, e) <- NULL;
-    sendToMax(o, e) <- NULL;
-    sendToEmail(o, e) <- NULL;
 }
 
 EXTEND FORM manufacturingOrder
-    OBJECTS e = Employee
-    PROPERTIES(e) READONLY MasterData.firstName, MasterData.lastName
-    PROPERTIES sendToMax(o, e), sendToEmail(o, e)
-    PROPERTIES  DRAW e TOOLBAR addAssignee(o), unassign(o, e)
-    FILTERS assigned(o, e);
+    OBJECTS a = ManufacturingOrderAssignee
+    PROPERTIES(a) nameEmployee, sendToMax, sendToEmail, NEW, DELETE
+    FILTERS manufacturingOrder(a) = o
+;
 
 DESIGN manufacturingOrder {
     details {
         NEW notifications {
             caption = badged('Assignees', countAssignees(o));
-            MOVE BOX(e) { caption = ''; }
+            MOVE BOX(a) { caption = ''; }
         }
     }
 }
