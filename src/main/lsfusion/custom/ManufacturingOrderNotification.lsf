@@ -1,6 +1,6 @@
 MODULE ManufacturingOrderNotification;
 
-REQUIRE ProjectManufacturingOrder, MaxMessenger, ProjectAssignment;
+REQUIRE ProjectManufacturingOrder, MaxMessenger, ProjectAssignment, Comments;
 
 NAMESPACE Manufacturing;
 
@@ -26,12 +26,21 @@ WHEN (SETCHANGED(project(ManufacturingOrder o)) OR SETCHANGED(scheduledDateTime(
 //notifications
 sendNotificationManufacturingOrder 'Отправка уведомлений по производственому заказу' ABSTRACT LIST (ManufacturingOrder, STRING);
 
+cleanCommentText = FORMULA STRING 'btrim(regexp_replace(regexp_replace($1, \'</p>|<br[^>]*>\', chr(10), \'gi\'), \'<[^>]+>\', \'\', \'g\'))';
+
 textMessageComment(ManufacturingOrderComment c) = CONCAT '\n',
     '💬 Новый комментарий',
     '📋 Заказ №' + number(manufacturingOrder(c)),
     '👤 ' + fullName(user(c)),
     '',
-    [FORMULA STRING 'btrim(regexp_replace(regexp_replace($1, \'</p>|<br[^>]*>\', chr(10), \'gi\'), \'<[^>]+>\', \'\', \'g\'))'](text(c));
+    cleanCommentText(text(c));
+
+textMessageMention(ManufacturingOrderComment c) = CONCAT '\n',
+    '💬 Упоминание',
+    '📋 Заказ №' + number(manufacturingOrder(c)),
+    '👤 ' + fullName(user(c)),
+    '',
+    cleanCommentText(text(c));
 
 addedFile 'Added' = DATA LOCAL BOOLEAN (ManufacturingOrderFile);
 WHEN SETCHANGED(file(ManufacturingOrderFile f)) DO addedFile(f) <- TRUE;
@@ -91,6 +100,15 @@ sendNotificationManufacturingOrder(ManufacturingOrder o, STRING s)+{
     FOR manufacturingOrder(ManufacturingOrderAssignee a) = o AND sendToMax(a) AND chat(employee(a)) DO {
         sendNotificationManufacturingOrderMessenger(o, employee(a), s);
     }
+}
+
+WHEN SETCHANGED(text(ManufacturingOrderComment c))
+    AND mentioned(c, Employee e)
+    AND NOT user(c) = e
+    AND ManufacturingOrder o = manufacturingOrder(c)
+DO {
+    IF chat(e) THEN sendNotificationManufacturingOrderMessenger(o, e, textMessageMention(c));
+    IF MasterData.email(e) THEN sendNotificationManufacturingOrderEmail(o, e, textMessageMention(c));
 }
 
 EXTEND FORM manufacturingOrder
