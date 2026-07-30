@@ -33,15 +33,28 @@ textMessageComment(ManufacturingOrderComment c) = CONCAT '\n',
     '',
     [FORMULA STRING 'btrim(regexp_replace(regexp_replace($1, \'</p>|<br[^>]*>\', chr(10), \'gi\'), \'<[^>]+>\', \'\', \'g\'))'](text(c));
 
-textMessageFile(ManufacturingOrderFile f) = CONCAT '\n',
-    '📎 Добавлен файл',
-    '📋 Заказ №' + number(manufacturingOrder(f)),
-    '👤 ' + fullName(user(f)),
+addedFile 'Added' = DATA LOCAL BOOLEAN (ManufacturingOrderFile);
+WHEN SETCHANGED(file(ManufacturingOrderFile f)) DO addedFile(f) <- TRUE;
+
+countAddedFiles (ManufacturingOrder o) = GROUP SUM 1 IF addedFile(ManufacturingOrderFile f) AND manufacturingOrder(f) = o;
+namesAddedFiles (ManufacturingOrder o) = GROUP CONCAT (CONCAT '.', name(ManufacturingOrderFile f), extension(f)), '\n'
+    IF addedFile(f) AND manufacturingOrder(f) = o ORDER f;
+lastAddedFile (ManufacturingOrder o) = GROUP LAST ManufacturingOrderFile f ORDER f WHERE addedFile(f) AND manufacturingOrder(f) = o;
+userAddedFiles (ManufacturingOrder o) = fullName(user(lastAddedFile(o)));
+
+textMessageFiles(ManufacturingOrder o) = CONCAT '\n',
+    '📎 Добавлено файлов: ' + countAddedFiles(o),
+    '📋 Заказ №' + number(o),
+    '👤 ' + userAddedFiles(o),
     '',
-    (CONCAT '.', name(f), extension(f));
+    namesAddedFiles(o);
 
 WHEN SETCHANGED (text(ManufacturingOrderComment c)) AND ManufacturingOrder o = manufacturingOrder(c) DO sendNotificationManufacturingOrder(o, textMessageComment(c));
-WHEN SETCHANGED (file(ManufacturingOrderFile f)) AND ManufacturingOrder o = manufacturingOrder(f) DO sendNotificationManufacturingOrder(o, textMessageFile(f));
+
+WHEN countAddedFiles(ManufacturingOrder o) DO {
+    sendNotificationManufacturingOrder(o, textMessageFiles(o));
+    addedFile(ManufacturingOrderFile f) <- NULL WHERE addedFile(f) AND manufacturingOrder(f) = o;
+}
 
 sendNotificationManufacturingOrderEmail(ManufacturingOrder o, Employee e, STRING s){
     EMAIL
