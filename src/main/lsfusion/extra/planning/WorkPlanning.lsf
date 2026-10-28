@@ -188,6 +188,10 @@ workBoardI18n () = JSON FROM
     child = 'Отделённая плашка',
     note = 'Примечание',
     noteHint = 'Кратко: что будет делать?',
+    workType = 'Вид работ',
+    workTypeHint = 'Начните вводить — появятся совпадения',
+    workTypeAdd = 'Добавить в список',
+    workTypeNotInList = 'Выберите из подсказок или добавьте в список',
     dragHint = 'Перетаскивание — перевод на другой заказ, с Ctrl — отделить часть дня. Звено тащат за заголовок плашки, человека можно бросить на плашку звена',
     teams = 'Звенья',
     foremanLabel = 'Бригадир',
@@ -237,6 +241,29 @@ boardSaveNote (WorkAllocation a, STRING n) {
     IF NOT a IS WorkAllocation THEN RETURN;
     NEWSESSION {
         note(a) <- STRING[200](trim(n)) IF n AND NOT trim(n) = r'';
+        APPLY;
+    }
+}
+// подсказки поля «Вид работ» в карточке плашки (getPropertyValues в режиме 'change') — только действующие виды
+changeWorkType (WorkAllocation a) {
+    INPUT t = workType(a) CHANGE LIST name(t) WHERE NOT archived(t);
+}
+// вид работ из карточки плашки по наименованию; пустое поле приходит пустой строкой — вид снимается;
+// add — «Добавить в список»: нового наименования ещё нет в справочнике, он пополняется
+boardSaveWorkType (WorkAllocation a, STRING n, BOOLEAN add) {
+    IF NOT a IS WorkAllocation THEN RETURN;
+    NEWSESSION {
+        IF n AND NOT trim(n) = r'' THEN {
+            LOCAL t = WorkType ();
+            t() <- workType(ISTRING[150](trim(n)));
+            IF NOT t() AND add THEN NEW w = WorkType {
+                name(w) <- ISTRING[150](trim(n));
+                t() <- w;
+            }
+            IF NOT t() OR archived(t()) THEN RETURN;
+            workType(a) <- t();
+        } ELSE
+            workType(a) <- NULL;
         APPLY;
     }
 }
@@ -290,6 +317,8 @@ FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
                 PAGESIZE 0
     PROPERTIES(a) READONLY nameEmployee, namePosition, employee, order, fromDate, toDate, hours, dayHours,
                            child = childInPeriod, split = splitInPeriod, familyOrder, childOrder, note
+    // не READONLY: по нему карточка плашки получает подсказки видов работ, сохраняет — boardSaveWorkType
+    PROPERTIES(a) nameWorkType ON CHANGE changeWorkType(a)
     PROPERTIES READONLY aid = (LONG(a))
     ORDERS namePosition(a), nameEmployee(a), familyOrder(a), childOrder(a), aid
     FILTERS overlaps(a, periodFrom(), periodTo()), shown(order(a), b)
@@ -300,6 +329,7 @@ FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
             boardSplit[WorkAllocation, ManufacturingOrder, NUMERIC[5,2], STRING],
             boardSaveAllocation[WorkAllocation, STRING, STRING, NUMERIC[5,2]],
             boardSaveNote[WorkAllocation, STRING],
+            boardSaveWorkType[WorkAllocation, STRING, BOOLEAN],
             boardCalendarShift[INTEGER]
 
     EVENTS ON INIT {

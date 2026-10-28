@@ -1,0 +1,35 @@
+MODULE WorkType;
+
+REQUIRE WorkBoard;
+
+NAMESPACE Manufacturing;
+
+// Вид работ для сменных заданий («Сварка трубопроводов», «Полировка швов»): что человек делает на заказе.
+// Справочник ведут сами пользователи; на доске вид работ выбирается в карточке плашки по подсказкам при наборе.
+CLASS WorkType 'Вид работ';
+TABLE workType (WorkType);
+
+name 'Наименование' = DATA ISTRING[150] (WorkType) NONULL TABLE workType IN id CHARWIDTH 40;
+archived 'Архив' = DATA BOOLEAN (WorkType) TABLE workType IN base;
+
+// наименование уникально: по нему карточка плашки находит выбранный вид работ
+workType (ISTRING[150] n) = GROUP AGGR WorkType t BY name(t);
+
+FORM workTypes 'Виды работ для сменных заданий' IMAGE 'bi bi-tools'
+    OBJECTS t = WorkType
+    PROPERTIES(t) name, archived
+    PROPERTIES(t) NEW, DELETE
+    ORDERS name(t)
+    FILTERGROUP activeTypes
+        FILTER 'Действующие' NOT archived(t) DEFAULT
+
+    LIST WorkType OBJECT t
+;
+
+NAVIGATOR {
+    manufacturing {
+        settings {
+            NEW workTypes;
+        }
+    }
+}
