@@ -17,20 +17,13 @@ ganttEnd (WorkAllocation a) = OVERRIDE toDate(a), (planeDateTime(order(a)) IF pl
 ganttChild (WorkAllocation a) = parent(a) AND overlaps(parent(a), periodFrom(), ganttTo());
 ganttSplit (WorkAllocation a) = countAllocations(employee(a), periodFrom(), ganttTo()) > 1;
 
-// фильтр по сотруднику — только на Ганте: остаются его строки и заказы, на которых он стоит в периоде
-filterEmployee = DATA LOCAL Employee ();
-nameFilterEmployee 'Сотрудник' () = name(filterEmployee());
-countAllocations (ManufacturingOrder o, Employee e, DATE from, DATE to) =
-    GROUP SUM 1 IF order(WorkAllocation a) = o AND employee(a) = e AND overlaps(a, from, to);
-
 ganttOrders (WorkBoard b) = JSON FROM
     id = ManufacturingOrder o, number = number(o), item = STRING[100](nameItem(o)), note = STRING[100](note(o)),
     partner = STRING[100](namePartner(o)), responsible = STRING[100](nameResponsible(o)),
     start = scheduledDate(o), end = planeDateTime(o), daysLeft = daysLeft(o), done = done(o),
     status = STRING[50](nameStatus(o)), statusColor = colorStatus(o),
     locked = (TRUE IF (readonly(o) OR done(o)))
-    WHERE shown(o, b, periodFrom(), ganttTo()) AND
-          (NOT filterEmployee() OR countAllocations(o, filterEmployee(), periodFrom(), ganttTo()))
+    WHERE shown(o, b, periodFrom(), ganttTo())
     ORDER scheduledDateTime(o), o
     TOP 100;
 
@@ -77,9 +70,7 @@ ganttSaveOrder (ManufacturingOrder o, STRING start, STRING end) {
 }
 
 EXTEND FORM workPlanning
-    // остальные фильтры — общие с доской, в правой колонке формы
-    PROPERTIES() nameFilterEmployee
-
+    // фильтры — общие с доской, в правой колонке формы
     OBJECTS g = WorkAllocation CUSTOM 'workGantt'
                 OPTIONS JSON FROM orders = ganttOrders(b), from = periodFrom(), to = ganttTo(), today = currentDate(),
                                   actionDate = actionDate(), dayHours = workDayHours(), i18n = workGanttI18n()
@@ -119,10 +110,6 @@ DESIGN workPlanning {
             }
         }
         REMOVE BOX(g);
-        // фильтр по сотруднику действует только на Ганте
-        peopleFilters {
-            MOVE PROPERTY(nameFilterEmployee()) { caption = 'Сотрудник (на Ганте)'; captionVertical = TRUE; alignment = STRETCH; }
-        }
     }
 }
 

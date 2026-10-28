@@ -16,6 +16,9 @@ filterDepartment = DATA LOCAL Department ();
 nameFilterDepartment 'Подразделение' () = name(filterDepartment());
 filterPosition = DATA LOCAL Position ();
 nameFilterPosition 'Должность' () = name(filterPosition());
+// сотрудник — на всех вкладках: остаются он сам и заказы, на которых он стоит в периоде (поиск человека по фамилии)
+filterEmployee = DATA LOCAL Employee ();
+nameFilterEmployee 'Сотрудник' () = name(filterEmployee());
 filterResponsible = DATA LOCAL Employee ();
 nameFilterResponsible 'Ответственный' () = name(filterResponsible());
 filterType = DATA LOCAL ManufacturingOrderType ();
@@ -134,20 +137,23 @@ boardCalendarShift (INTEGER n) {
 }
 
 countAllocations (ManufacturingOrder o, DATE from, DATE to) = GROUP SUM 1 IF order(WorkAllocation a) = o AND overlaps(a, from, to);
+countAllocations (ManufacturingOrder o, Employee e, DATE from, DATE to) =
+    GROUP SUM 1 IF order(WorkAllocation a) = o AND employee(a) = e AND overlaps(a, from, to);
 
 // заказы доски за период по статусу: «Активные» (пусто) или выбранный статус; начатые к концу периода,
 // выполненные — за последние 60 дней; заказ, на котором в периоде стоят люди, виден всегда, чтобы они
-// не «потерялись», — кроме фильтров по статусу, типу и поиска по номеру; при поиске ограничения по датам
-// не действуют: находятся все заказы доски с таким номером
+// не «потерялись», — кроме фильтров по статусу, типу, ответственному и поиска по номеру; при поиске ограничения
+// по датам не действуют: находятся все заказы доски с таким номером; при выбранном сотруднике — только заказы, где он стоит
 shown (ManufacturingOrder o, WorkBoard b, DATE from, DATE to) = onBoard(o, b) AND
+    (NOT filterEmployee() OR countAllocations(o, filterEmployee(), from, to)) AND
     (IF filterStatus() THEN status(o) = filterStatus() ELSE NOT canceled(o)) AND
     (NOT filterType() OR type(o) = filterType()) AND
+    (NOT filterResponsible() OR responsible(o) = filterResponsible()) AND
     (NOT orderSearch() OR ISTRING[50](number(o)) LIKE r'%' + orderSearch() + r'%') AND
     (countAllocations(o, from, to) OR
         ((IF done(o) THEN (filterStatus() OR orderSearch()) AND (orderSearch() OR NOT DATE(executionDateTime(o)) < sum(from, -60))
                      ELSE (orderSearch() OR scheduledDate(o) <= to))
-         AND (filterStatus() OR opened(o))
-         AND (NOT filterResponsible() OR responsible(o) = filterResponsible())));
+         AND (filterStatus() OR opened(o))));
 // колонки доски
 shown (ManufacturingOrder o, WorkBoard b) = shown(o, b, periodFrom(), periodTo());
 
@@ -255,7 +261,7 @@ boardSaveAllocation (WorkAllocation a, STRING from, STRING to, NUMERIC[5,2] h) {
 
 FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
     PROPERTIES() todayPeriod, prevPeriod, boardDate SHOWIF isDay(), nextPeriod, captionPlanningRange,
-                 nameFilterDepartment, nameFilterPosition, nameFilterResponsible, orderSearch, captionFilterStatus
+                 nameFilterDepartment, nameFilterPosition, nameFilterEmployee, nameFilterResponsible, orderSearch, captionFilterStatus
     PROPERTIES rangeFrom 'С' = periodFrom() SHOWIF NOT isDay() ON CHANGE changeRangeFrom(),
                rangeTo 'по' = periodTo() SHOWIF NOT isDay() ON CHANGE changeRangeTo()
 
@@ -282,7 +288,8 @@ FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
     ORDERS namePosition(e), name(e)
     FILTERS inPool(b, e), boardFreeHours(e) > 0,
             NOT filterDepartment() OR department(e) = filterDepartment(),
-            NOT filterPosition() OR position(e) = filterPosition()
+            NOT filterPosition() OR position(e) = filterPosition(),
+            NOT filterEmployee() OR e = filterEmployee()
 
     OBJECTS a = WorkAllocation CUSTOM 'workBoard'
                 OPTIONS JSON FROM orders = boardOrders(b), from = periodFrom(), to = periodTo(), actionDate = actionDate(),
@@ -399,6 +406,7 @@ DESIGN workPlanning {
                     alignment = STRETCH;
                     MOVE PROPERTY(nameFilterDepartment()) { captionVertical = TRUE; alignment = STRETCH; }
                     MOVE PROPERTY(nameFilterPosition()) { captionVertical = TRUE; alignment = STRETCH; }
+                    MOVE PROPERTY(nameFilterEmployee()) { captionVertical = TRUE; alignment = STRETCH; }
                 }
             }
         }

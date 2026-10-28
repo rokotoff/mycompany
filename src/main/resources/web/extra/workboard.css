@@ -107,6 +107,8 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     box-sizing: border-box;
     min-height: 0;
+    /* без этого длинное примечание на плашке раздвигает колонку по своей ширине */
+    min-width: 0;
 }
 
 .wb-col.wb-over {
@@ -513,6 +515,7 @@
     font-size: 11px;
     font-style: italic;
     color: #5d4037;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

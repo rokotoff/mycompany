@@ -108,7 +108,8 @@ EXTEND FORM workPlanning
                             abFrom = fromDate, abTo = toDate, abEmployee = employee
     PROPERTIES READONLY abPosition = namePosition(employee(ab)), abid = (LONG(ab))
     ORDERS abName
-    FILTERS overlaps(ab, periodFrom(), periodTo()), inPool(b, employee(ab))
+    FILTERS overlaps(ab, periodFrom(), periodTo()), inPool(b, employee(ab)),
+            NOT filterEmployee() OR employee(ab) = filterEmployee()
 
     // недоступные в день действия доски не показываются в «Свободных»
     FILTERS NOT absent(e, actionDate())
