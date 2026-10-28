@@ -521,6 +521,57 @@
     white-space: nowrap;
 }
 
+/* вид работ на плашке */
+.wb-chip-work {
+    flex-basis: 100%;
+    min-width: 0;
+    font-size: 11px;
+    color: #3f51b5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* подсказки поля «Вид работ» в карточке плашки: поверх карточки, чтобы кнопки под полем не сдвигались */
+.wb-suggest-field {
+    position: relative;
+}
+
+.wb-suggest {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--grid-separator-border-color, rgba(0, 0, 0, 0.2));
+    border-radius: 4px;
+    background: var(--background-color, #fff);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+}
+
+.wb-suggest-item {
+    padding: 3px 8px;
+    cursor: pointer;
+}
+
+.wb-suggest-item:hover,
+.wb-suggest-item.wb-active {
+    background: rgba(63, 81, 181, 0.12);
+}
+
+.wb-suggest-warn {
+    text-align: left;
+    color: #d32f2f;
+    opacity: 1;
+}
+
+.wb-suggest-add {
+    font-style: italic;
+    border-top: 1px solid var(--grid-separator-border-color, rgba(0, 0, 0, 0.12));
+}
+
 .wb-pop-field-wide {
     flex-direction: column;
     align-items: stretch;

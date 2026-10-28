@@ -571,6 +571,13 @@ function workBoard() {
         }
         if (row.hours != null)
             workBoardBadge(chip, workBoardHours(row.hours) + " " + workBoardText(options, "hoursShort", "ч"));
+        if (row.nameWorkType) {
+            const work = document.createElement("span");
+            work.className = "wb-chip-work";
+            work.textContent = row.nameWorkType;
+            chip.appendChild(work);
+            chip.title += "\n" + workBoardText(options, "workType", "Вид работ") + ": " + row.nameWorkType;
+        }
         if (row.note) {
             const note = document.createElement("span");
             note.className = "wb-chip-note";
@@ -610,6 +617,95 @@ function workBoard() {
         return input;
     }
 
+    // поле «Вид работ»: при наборе сервер подсказывает совпадения из справочника (как в выпадающих
+    // полях платформы), нового наименования нет в списке — «Добавить в список». Возвращает состояние для сохранения.
+    function workTypeField(pop, row, options, st) {
+        const input = cardInput("text", row.nameWorkType || "");
+        input.maxLength = 150;
+        input.placeholder = workBoardText(options, "workTypeHint", "");
+        const field = cardField(pop, workBoardText(options, "workType", "Вид работ"), input).parentNode;
+        field.classList.add("wb-pop-field-wide", "wb-suggest-field");
+        const list = document.createElement("div");
+        list.className = "wb-suggest";
+        list.style.display = "none";
+        field.appendChild(list);
+        const warn = document.createElement("div");
+        warn.className = "wb-pop-hint wb-suggest-warn";
+        warn.textContent = workBoardText(options, "workTypeNotInList", "");
+        warn.style.display = "none";
+        field.appendChild(warn);
+
+        // known — наименование из справочника (выбрано из подсказок или уже стояло), add — новое, добавить в список
+        const state = { input: input, warn: warn, known: row.nameWorkType || "", add: false };
+        const same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+        let timer = null, seq = 0, items = [], active = -1;
+
+        const hide = () => { list.style.display = "none"; active = -1; };
+        const pick = (text, add) => {
+            input.value = text;
+            state.known = add ? "" : text;
+            state.add = !!add;
+            input.classList.remove("wb-invalid");
+            warn.style.display = "none";
+            hide();
+        };
+        const highlight = () => list.querySelectorAll(".wb-suggest-item").forEach((el, i) => el.classList.toggle("wb-active", i === active));
+        const show = (q) => {
+            list.innerHTML = "";
+            const entries = items.map((text) => ({ text: text, add: false }));
+            if (!items.some((text) => same(text, q))) entries.push({ text: q, add: true });
+            for (const entry of entries) {
+                const el = document.createElement("div");
+                el.className = "wb-suggest-item" + (entry.add ? " wb-suggest-add" : "");
+                el.textContent = entry.add ? workBoardText(options, "workTypeAdd", "Добавить в список") + ": «" + entry.text + "»" : entry.text;
+                // mousedown, а не click: поле не теряет фокус до выбора
+                el.addEventListener("mousedown", (e) => { e.preventDefault(); pick(entry.text, entry.add); });
+                list.appendChild(el);
+            }
+            list.wbEntries = entries;
+            active = -1;
+            list.style.display = entries.length ? "block" : "none";
+        };
+
+        input.addEventListener("input", () => {
+            state.add = false;
+            warn.style.display = "none";
+            clearTimeout(timer);
+            const q = input.value.trim();
+            if (!q) { hide(); return; }
+            // запрос — после паузы в наборе; ответ на устаревший запрос не показывается
+            timer = setTimeout(() => {
+                const my = ++seq;
+                st.controller.getPropertyValues("nameWorkType", q, "change", (result) => {
+                    if (my !== seq || !input.isConnected) return;
+                    // rawString — само наименование; в displayString сервер выделяет совпадение тегами <b>
+                    items = ((result && result.data) || []).map((d) => d.rawString || "").filter(Boolean);
+                    if (items.some((text) => same(text, input.value))) state.known = input.value.trim();
+                    show(q);
+                }, () => {}, 20);
+            }, 300);
+        });
+        input.addEventListener("keydown", (e) => {
+            const entries = list.style.display === "none" ? [] : (list.wbEntries || []);
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                if (!entries.length) return;
+                e.preventDefault();
+                active = (active + (e.key === "ArrowDown" ? 1 : entries.length - 1)) % entries.length;
+                highlight();
+            } else if (e.key === "Enter" && active >= 0) {
+                // Enter выбирает подсказку, а не сохраняет карточку
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                pick(entries[active].text, entries[active].add);
+            } else if (e.key === "Escape" && entries.length) {
+                e.stopPropagation();
+                hide();
+            }
+        });
+        input.addEventListener("blur", hide);
+        return state;
+    }
+
     // карточка плашки прямо на доске: период, часы в день, снять с заказа
     function showCard(row, options, st, x, y) {
         const pop = workBoardPopup();
@@ -634,6 +730,7 @@ function workBoard() {
         const hours = cardField(pop, workBoardText(options, "hours", "Часов в день"), cardInput("number", workBoardHours(row.dayHours).replace(",", ".")));
         hours.min = "0.5";
         hours.step = "0.5";
+        const work = workTypeField(pop, row, options, st);
         const note = document.createElement("textarea");
         note.className = "wb-pop-input wb-pop-note";
         note.rows = 2;
@@ -649,13 +746,22 @@ function workBoard() {
             if (!from.value) { from.classList.add("wb-invalid"); ok = false; }
             if (to.value && from.value && to.value < from.value) { to.classList.add("wb-invalid"); ok = false; }
             if (!(h > 0)) { hours.classList.add("wb-invalid"); ok = false; }
+            // вид работ — только из справочника: выбран из подсказок, уже стоял или добавляется в список
+            const wt = work.input.value.trim();
+            if (wt && !work.add && wt.toLowerCase() !== work.known.trim().toLowerCase()) {
+                work.input.classList.add("wb-invalid");
+                work.warn.style.display = "block";
+                ok = false;
+            }
             if (!ok) return;
             pop.style.display = "none";
             st.controller.form.exec("boardSaveAllocation", row.aid, from.value, to.value || "", h);
             if ((row.note || "") !== note.value.trim())
                 st.controller.form.exec("boardSaveNote", row.aid, note.value);
+            if (work.add || wt.toLowerCase() !== (row.nameWorkType || "").toLowerCase())
+                st.controller.form.exec("boardSaveWorkType", row.aid, wt, work.add ? true : null);
         };
-        [from, to, hours].forEach((i) => i.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); }));
+        [from, to, hours, work.input].forEach((i) => i.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); }));
 
         if (row.team) {
             const team = document.createElement("div");

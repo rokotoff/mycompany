@@ -1,6 +1,6 @@
 MODULE WorkAllocation;
 
-REQUIRE WorkBoard, WorkTeam, Time;
+REQUIRE WorkBoard, WorkTeam, WorkType, Time;
 
 NAMESPACE Manufacturing;
 
@@ -23,6 +23,9 @@ hours 'Часов в день' = DATA NUMERIC[5,2] (WorkAllocation) TABLE workAl
 parent = DATA WorkAllocation (WorkAllocation) TABLE workAllocation;
 // примечание к назначению: что именно человек делает на заказе («на полировку швов»)
 note 'Примечание' = DATA STRING[200] (WorkAllocation) TABLE workAllocation IN base CHARWIDTH 30;
+// вид работ из справочника; как и примечание, относится к работе на этом заказе
+workType = DATA WorkType (WorkAllocation) TABLE workAllocation;
+nameWorkType 'Вид работ' (WorkAllocation a) = name(workType(a)) IN base;
 // звено, в составе которого сотрудник работает на заказе (пусто — сам по себе)
 team = DATA WorkTeam (WorkAllocation) TABLE workAllocation INDEXED;
 nameTeam 'Звено' (WorkAllocation a) = name(team(a));
@@ -58,6 +61,7 @@ cut (WorkAllocation a, DATE d) {
             parent(n) <- parent(a);
             team(n) <- team(a);
             note(n) <- note(a);
+            workType(n) <- workType(a);
             fromDate(n) <- d;
             toDate(n) <- toDate(a);
             parent(WorkAllocation c) <- n WHERE parent(c) = a AND NOT toDate(c) < d;
@@ -81,6 +85,7 @@ mergeIn (WorkAllocation n) {
         parent(WorkAllocation c) <- cutResult() WHERE parent(c) = n;
         IF parent(cutResult()) = n THEN parent(cutResult()) <- parent(n);
         IF NOT note(cutResult()) THEN note(cutResult()) <- note(n);
+        IF NOT workType(cutResult()) THEN workType(cutResult()) <- workType(n);
         DELETE n;
     }
 }
@@ -124,11 +129,12 @@ allocate (Employee e, ManufacturingOrder o, DATE from, DATE to) {
 }
 
 // перевод на другой заказ с даты from внутри текущей сессии; звено распределения сохраняется,
-// примечание относилось к прежнему заказу и снимается
+// примечание и вид работ относились к прежнему заказу и снимаются
 moveIn (WorkAllocation a, ManufacturingOrder o, DATE from) {
     cut(a, from);
     order(cutResult()) <- o;
     note(cutResult()) <- NULL;
+    workType(cutResult()) <- NULL;
 }
 
 // перевод плашки на другой заказ с даты from: человек уходит один, без звена
@@ -191,7 +197,7 @@ split (WorkAllocation a, ManufacturingOrder o, NUMERIC[5,2] h, DATE from) {
 
 FORM workAllocation 'Распределение'
     OBJECTS a = WorkAllocation PANEL
-    PROPERTIES(a) nameEmployee, numberOrder, nameTeam, fromDate, toDate, hours, note
+    PROPERTIES(a) nameEmployee, numberOrder, nameTeam, fromDate, toDate, hours, nameWorkType, note
 
     EDIT WorkAllocation OBJECT a
 ;
@@ -205,6 +211,7 @@ DESIGN workAllocation {
             MOVE PROPERTY(fromDate(a));
             MOVE PROPERTY(toDate(a));
             MOVE PROPERTY(hours(a));
+            MOVE PROPERTY(nameWorkType(a));
             MOVE PROPERTY(note(a));
         }
     }
