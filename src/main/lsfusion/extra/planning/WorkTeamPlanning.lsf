@@ -156,7 +156,8 @@ EXTEND FORM workPlanning
     PROPERTIES(tm) READONLY tmName = name, tmForeman = nameForeman
     PROPERTIES READONLY tmFree = freeMembers(tm, b), tmMembers = freeMemberNames(tm, b), tid = (LONG(tm))
     ORDERS tmName
-    FILTERS NOT archived(tm), freeMembers(tm, b)
+    FILTERS NOT archived(tm), freeMembers(tm, b),
+            NOT filterEmployee() OR team(filterEmployee()) = tm
 
     // звено плашки: по нему workboard.js собирает плашки звена в одну
     PROPERTIES(a) READONLY team, nameTeam, foreman = isForeman, teamCount

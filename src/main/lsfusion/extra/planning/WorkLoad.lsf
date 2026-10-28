@@ -123,7 +123,8 @@ EXTEND FORM workPlanning
     ORDERS lePosition, leName
     FILTERS inPool(b, le),
             NOT filterDepartment() OR department(le) = filterDepartment(),
-            NOT filterPosition() OR position(le) = filterPosition()
+            NOT filterPosition() OR position(le) = filterPosition(),
+            NOT filterEmployee() OR le = filterEmployee()
     FILTERGROUP loadProblems
         FILTER 'Перегрузка' countOverload(le, loadFrom(), loadTo())
         FILTER 'Недогрузка' countUnderload(le, loadFrom(), loadTo())
