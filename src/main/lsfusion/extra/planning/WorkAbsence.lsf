@@ -106,7 +106,7 @@ EXTEND FORM workPlanning
                 PAGESIZE 0
     PROPERTIES(ab) READONLY abName = nameEmployee, abReason = captionReason, abReasonId = reason,
                             abFrom = fromDate, abTo = toDate, abEmployee = employee
-    PROPERTIES READONLY abPosition = namePosition(employee(ab)), abid = (LONG(ab))
+    PROPERTIES READONLY abPosition = namePosition(employee(ab)), abDepartment = nameDepartment(employee(ab)), abid = (LONG(ab))
     ORDERS abName
     FILTERS overlaps(ab, periodFrom(), periodTo()), inPool(b, employee(ab)),
             NOT filterEmployee() OR employee(ab) = filterEmployee()

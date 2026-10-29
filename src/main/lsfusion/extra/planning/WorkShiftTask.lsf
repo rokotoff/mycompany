@@ -1,0 +1,145 @@
+MODULE WorkShiftTask;
+
+REQUIRE WorkTeamPlanning, NumericUtils;
+
+NAMESPACE Manufacturing;
+
+// Сменное задание на день: что за день делать по каждому заказу доски — кто назначен (звенья с бригадиром, люди),
+// сколько часов и примечание к назначению; в конце — свободные и недоступные. Печатная форма с кнопки на доске
+// в режиме «День»; заказы — те, что видны на доске с её фильтрами заказов.
+
+// бригадир звена отмечается звёздочкой, как на плашке звена
+shiftName (WorkAllocation a) = (IF foreman(team(a)) = employee(a) THEN '★ ' ELSE '') + nameEmployee(a);
+// порядок строк заказа: сначала звенья (бригадир первым), затем люди без звена
+teamRank (WorkAllocation a) = IF team(a) THEN 1 ELSE 2;
+foremanRank (WorkAllocation a) = IF foreman(team(a)) = employee(a) THEN 1 ELSE 2;
+
+// часы сотрудника на заказе за день (по всем его плашкам на этом заказе)
+dayHours (Employee e, ManufacturingOrder o, DATE d) = GROUP SUM dayHours(WorkAllocation x) IF employee(x) = e AND order(x) = o AND overlaps(x, d, d);
+// часть дня на других заказах: «ещё: Агро\З-22 — 4 ч»; дробные часы — с запятой, как в колонке «Часы»
+shiftOthers (WorkAllocation a, DATE d) = GROUP CONCAT (number(ManufacturingOrder o) + ' — ' + replace(trimScale(dayHours(employee(a), o, d)), r'.', r',') + ' ч')
+    IF dayHours(employee(a), o, d) AND NOT o = order(a), '; ' ORDER number(o), o;
+
+// бригадиры звеньев, которые в этот день стоят на заказах доски, — с местом для подписи
+shiftForemen (WorkBoard b, DATE d) = GROUP CONCAT (name(foreman(WorkTeam t)) + ' ____________')
+    IF (GROUP SUM 1 IF team(WorkAllocation a) = t AND overlaps(a, d, d) AND shown(order(a), b, d, d)),
+    '      ' ORDER name(foreman(t)), t;
+
+shiftCaption (DATE d) = extractDOWName(d) + ', ' + toChar(d, r'DD.MM.YYYY');
+
+// свободные и недоступные: недоступные — с причиной и сроком, свободные — сколько часов не распределено
+shiftSection (Employee e, DATE d) = IF absent(e, d) THEN 'Недоступные' ELSE 'Свободные';
+shiftSectionRank (Employee e, DATE d) = IF absent(e, d) THEN 2 ELSE 1;
+shiftDetail (Employee e, DATE d) = IF absent(e, d)
+    THEN (OVERRIDE captionReason(absence(e, d)), 'Недоступен') +
+         (IF toDate(absence(e, d)) THEN ' по ' + toChar(toDate(absence(e, d)), r'DD.MM.YYYY') ELSE ', до возвращения')
+    ELSE (IF freeHours(e, d, d) >= workDayHours() THEN 'весь день'
+          ELSE 'свободно ' + trimScale(freeHours(e, d, d)) + ' ч из ' + trimScale(workDayHours()));
+
+// Шаблоны: Manufacturing_workShiftTask (шапка и подписи), _o (заказы и назначения), _e (свободные и недоступные)
+FORM workShiftTask 'Сменное задание'
+    OBJECTS params = (d = DATE, b = WorkBoard) PANEL
+    PROPERTIES shiftCaption = shiftCaption(d), board = name(b), foremen = shiftForemen(b, d)
+
+    OBJECTS o = ManufacturingOrder
+    PROPERTIES number = number(o), deadline = planeDateTime(o), responsible = nameResponsible(o), start = scheduledDateTime(o)
+    ORDERS start, number
+    FILTERS shown(o, b, d, d), countAllocations(o, d, d)
+
+    OBJECTS a = WorkAllocation
+    PROPERTIES teamRank = teamRank(a), team = nameTeam(a), foremanRank = foremanRank(a), employee = shiftName(a),
+               position = namePosition(a), hours = dayHours(a), workType = nameWorkType(a), note = note(a), others = shiftOthers(a, d)
+    ORDERS teamRank, team, foremanRank, employee
+    FILTERS order(a) = o, overlaps(a, d, d)
+
+    OBJECTS e = Employee
+    PROPERTIES sectionRank = shiftSectionRank(e, d), section = shiftSection(e, d), name = name(e), positionFree = namePosition(e),
+               detail = shiftDetail(e, d)
+    ORDERS sectionRank, positionFree, name
+    FILTERS inPool(b, e), absent(e, d) OR freeHours(e, d, d) > 0,
+            NOT filterDepartment() OR department(e) = filterDepartment(),
+            NOT filterPosition() OR position(e) = filterPosition()
+;
+
+// печать (в веб-клиенте — PDF в новой вкладке) и выгрузка в Excel
+printShiftTask 'Печать' (WorkBoard b, DATE d) {
+    PRINT workShiftTask OBJECTS d = d, b = b;
+}
+printShiftTaskXlsx 'Excel' (WorkBoard b, DATE d) {
+    PRINT workShiftTask OBJECTS d = d, b = b XLSX;
+}
+
+// Форма «Сменное задание»: назначения дня по заказам доски списком, вид работ и примечание правятся прямо в таблице.
+// Вид работ и примечание относятся ко всему назначению (как в карточке плашки на доске), не только к этому дню.
+FORM workShiftTaskDay 'Сменное задание'
+    OBJECTS d = DATE PANEL
+    PROPERTIES shiftDate 'Дата' = VALUE(d)
+    OBJECTS b = WorkBoard PANEL
+    PROPERTIES(b) name SELECTOR
+    PROPERTIES printShiftTask(b, d), printShiftTaskXlsx(b, d)
+
+    OBJECTS a = WorkAllocation
+    PROPERTIES(a) READONLY numberOrder, nameTeam
+    PROPERTIES READONLY employee 'Сотрудник' = shiftName(a), namePosition(a), dayHours(a)
+    // вид работ — из действующих, как в карточке плашки на доске
+    PROPERTIES(a) nameWorkType ON CHANGE changeWorkType(a), note
+    PROPERTIES READONLY others 'Ещё на заказах' = shiftOthers(a, d)
+    ORDERS numberOrder(a), nameTeam(a), employee
+    FILTERS overlaps(a, d, d), shown(order(a), b, d, d)
+;
+
+DESIGN workShiftTaskDay {
+    OBJECTS {
+        NEW header FIRST {
+            horizontal = TRUE;
+            alignment = STRETCH;
+            MOVE PROPERTY(shiftDate);
+            MOVE PROPERTY(name(b)) { caption = 'Доска'; }
+            MOVE PROPERTY(printShiftTask(b, d));
+            MOVE PROPERTY(printShiftTaskXlsx(b, d));
+        }
+    }
+    BOX(a) { caption = 'Назначения'; }
+    PROPERTY(numberOrder(a)) { charWidth = 35; }
+    PROPERTY(nameTeam(a)) { charWidth = 12; }
+    PROPERTY(employee) { charWidth = 25; }
+    PROPERTY(namePosition(a)) { charWidth = 18; }
+    PROPERTY(nameWorkType(a)) { charWidth = 22; }
+    PROPERTY(note(a)) { charWidth = 30; }
+    PROPERTY(others) { charWidth = 35; }
+    REMOVE BOX(d);
+    REMOVE BOX(b);
+}
+
+// с доски — за выбранный день: печать, Excel и правка примечаний списком
+printBoardShiftTask 'Сменное задание' (WorkBoard b) { printShiftTask(b, boardDate()); }
+printBoardShiftTaskXlsx 'Excel' (WorkBoard b) { printShiftTaskXlsx(b, boardDate()); }
+// дата доски — локальное свойство её сессии: в новую сессию она передаётся параметром
+editShiftTask (WorkBoard b, DATE d) {
+    NEWSESSION SHOW workShiftTaskDay OBJECTS d = d, b = b;
+}
+editBoardShiftTask 'Править примечания списком' (WorkBoard b) { editShiftTask(b, boardDate()); }
+
+EXTEND FORM workPlanning
+    PROPERTIES(b) printBoardShiftTask SHOWIF isDay(), printBoardShiftTaskXlsx SHOWIF isDay(), editBoardShiftTask SHOWIF isDay()
+;
+
+DESIGN workPlanning {
+    period {
+        NEW shiftTaskRow {
+            horizontal = TRUE;
+            alignment = STRETCH;
+            MOVE PROPERTY(printBoardShiftTask(b)) { flex = 1; }
+            MOVE PROPERTY(printBoardShiftTaskXlsx(b));
+        }
+        MOVE PROPERTY(editBoardShiftTask(b)) { alignment = STRETCH; }
+    }
+}
+
+NAVIGATOR {
+    manufacturing {
+        planning {
+            NEW workShiftTaskDay;
+        }
+    }
+}

@@ -67,7 +67,8 @@ function workBoardRelate(employeeId, on) {
     document.querySelectorAll('.wb-chip[data-employee="' + employeeId + '"]').forEach((c) => c.classList.toggle("wb-related", on));
 }
 
-function workBoardChip(name, position, employeeId) {
+// плашка человека: фамилия, ниже отдельными строками подразделение и должность
+function workBoardChip(name, position, employeeId, department) {
     const chip = document.createElement("div");
     chip.className = "wb-chip";
     chip.setAttribute("draggable", "true");
@@ -77,13 +78,15 @@ function workBoardChip(name, position, employeeId) {
     nm.className = "wb-chip-name";
     nm.textContent = name || "";
     chip.appendChild(nm);
-    if (position) {
+    for (const line of [department, position]) {
+        if (!line) continue;
         const ps = document.createElement("span");
         ps.className = "wb-chip-pos";
-        ps.textContent = position;
+        ps.textContent = line;
         chip.appendChild(ps);
     }
-    chip.title = position ? name + " — " + position : name;
+    const sub = [department, position].filter((v) => v).join(", ");
+    chip.title = sub ? name + " — " + sub : name;
     chip.addEventListener("mouseenter", () => workBoardRelate(employeeId, true));
     chip.addEventListener("mouseleave", () => workBoardRelate(employeeId, false));
     return chip;
@@ -410,7 +413,7 @@ function workBoardAbsent() {
             const body = element.wbBody;
             body.innerHTML = "";
             for (const row of list) {
-                const chip = workBoardChip(row.abName, row.abPosition, row.abEmployee);
+                const chip = workBoardChip(row.abName, row.abPosition, row.abEmployee, row.abDepartment);
                 chip.classList.add("wb-chip-absent");
                 const period = workBoardDateShort(row.abFrom) + " – " + (row.abTo ? workBoardDateShort(row.abTo) : "…");
                 workBoardBadge(chip, (row.abReason || "") + ", " + period, "wb-badge-absent");
@@ -490,7 +493,7 @@ function workBoardFree() {
             const body = element.wbBody;
             body.innerHTML = "";
             for (const row of list) {
-                const chip = workBoardChip(row.name, row.namePosition, row.eid);
+                const chip = workBoardChip(row.name, row.namePosition, row.eid, row.eDepartment);
                 if (row.free != null && dayHours != null && Number(row.free) < Number(dayHours))
                     workBoardBadge(chip, workBoardHours(row.free) + " " + workBoardText(options, "hoursShort", "ч") + " " +
                                          workBoardText(options, "freeShort", "своб."), "wb-badge-free");
@@ -583,7 +586,7 @@ function workBoard() {
     }
 
     function allocChip(row, options, st) {
-        const chip = workBoardChip(row.nameEmployee, row.namePosition, row.employee);
+        const chip = workBoardChip(row.nameEmployee, row.namePosition, row.employee, row.department);
         if (row.child) {
             chip.classList.add("wb-chip-child");
             chip.title += "\n" + workBoardText(options, "child", "Отделённая плашка");

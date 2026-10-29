@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Сменное задание (форма workShiftTask): шапка, подотчёты заказов (_o) и свободных / недоступных (_e), подписи -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="workShiftTask" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20">
+	<property name="net.sf.jasperreports.export.xls.print.page.width" value="842"/>
+	<property name="net.sf.jasperreports.export.xls.print.page.height" value="595"/>
+	<style name="DefaultStyle" isDefault="true" vTextAlign="Middle" fontName="DejaVu Sans" pdfFontName="DejaVu Sans" fontSize="10">
+		<paragraph leftIndent="2" rightIndent="2"/>
+	</style>
+	<parameter name="o_report" class="net.sf.jasperreports.engine.JasperReport"/>
+	<parameter name="o_source" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="o_params" class="java.util.Map"/>
+	<parameter name="e_report" class="net.sf.jasperreports.engine.JasperReport"/>
+	<parameter name="e_source" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="e_params" class="java.util.Map"/>
+	<field name="shiftCaption" class="java.lang.String"/>
+	<field name="board" class="java.lang.String"/>
+	<field name="foremen" class="java.lang.String"/>
+	<title>
+		<band height="34">
+			<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+				<reportElement x="0" y="0" width="560" height="24"/>
+				<textElement>
+					<font size="16" isBold="true"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Сменное задание — " + $F{shiftCaption}]]></textFieldExpression>
+			</textField>
+			<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+				<reportElement x="560" y="0" width="242" height="24"/>
+				<textElement textAlignment="Right">
+					<font size="12"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Доска: " + $F{board}]]></textFieldExpression>
+			</textField>
+		</band>
+	</title>
+	<detail>
+		<band height="2">
+			<subreport>
+				<reportElement positionType="Float" x="0" y="0" width="802" height="2"/>
+				<parametersMapExpression><![CDATA[$P{o_params}]]></parametersMapExpression>
+				<dataSourceExpression><![CDATA[$P{o_source}]]></dataSourceExpression>
+				<subreportExpression><![CDATA[$P{o_report}]]></subreportExpression>
+			</subreport>
+		</band>
+		<band height="14">
+			<subreport>
+				<reportElement positionType="Float" x="0" y="12" width="802" height="2"/>
+				<parametersMapExpression><![CDATA[$P{e_params}]]></parametersMapExpression>
+				<dataSourceExpression><![CDATA[$P{e_source}]]></dataSourceExpression>
+				<subreportExpression><![CDATA[$P{e_report}]]></subreportExpression>
+			</subreport>
+		</band>
+	</detail>
+	<pageFooter>
+		<band height="14">
+			<textField>
+				<reportElement x="602" y="0" width="200" height="14"/>
+				<textElement textAlignment="Right">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Стр. " + $V{PAGE_NUMBER}]]></textFieldExpression>
+			</textField>
+		</band>
+	</pageFooter>
+	<summary>
+		<band height="58">
+			<staticText>
+				<reportElement x="0" y="16" width="802" height="18"/>
+				<textElement>
+					<font size="11"/>
+				</textElement>
+				<text><![CDATA[Мастер  ______________________ / ______________________ /]]></text>
+			</staticText>
+			<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+				<reportElement positionType="Float" x="0" y="40" width="802" height="18">
+					<printWhenExpression><![CDATA[$F{foremen} != null]]></printWhenExpression>
+				</reportElement>
+				<textElement>
+					<font size="11"/>
+					<paragraph lineSpacing="1_1_2"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Бригадиры:  " + $F{foremen}]]></textFieldExpression>
+			</textField>
+		</band>
+	</summary>
+</jasperReport>

@@ -322,7 +322,7 @@ FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
                 OPTIONS JSON FROM from = periodFrom(), to = periodTo(), actionDate = actionDate(), dayHours = workDayHours(), i18n = workBoardI18n()
                 PAGESIZE 0
     PROPERTIES(e) READONLY name, namePosition, free = boardFreeHours
-    PROPERTIES READONLY eid = (LONG(e))
+    PROPERTIES READONLY eid = (LONG(e)), eDepartment = nameDepartment(e)
     ORDERS namePosition(e), name(e)
     FILTERS inPool(b, e), boardFreeHours(e) > 0,
             NOT filterDepartment() OR department(e) = filterDepartment(),
@@ -337,7 +337,7 @@ FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
                            child = childInPeriod, split = splitInPeriod, familyOrder, childOrder, note
     // не READONLY: по нему карточка плашки получает подсказки видов работ, сохраняет — boardSaveWorkType
     PROPERTIES(a) nameWorkType ON CHANGE changeWorkType(a)
-    PROPERTIES READONLY aid = (LONG(a))
+    PROPERTIES READONLY aid = (LONG(a)), department = nameDepartment(employee(a))
     ORDERS namePosition(a), nameEmployee(a), familyOrder(a), childOrder(a), aid
     FILTERS overlaps(a, periodFrom(), periodTo()), shown(order(a), b)
 

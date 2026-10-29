@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Сменное задание: заказы (строка-заголовок) и назначения на них; звено пишется в первой строке звена -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="o" pageWidth="802" pageHeight="595" orientation="Landscape" columnWidth="802" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0">
+	<style name="DefaultStyle" isDefault="true" vTextAlign="Middle" fontName="DejaVu Sans" pdfFontName="DejaVu Sans" fontSize="10">
+		<paragraph leftIndent="3" rightIndent="3"/>
+	</style>
+	<style name="Cell" vTextAlign="Middle" fontName="DejaVu Sans" pdfFontName="DejaVu Sans" fontSize="10">
+		<box>
+			<pen lineWidth="0.5" lineStyle="Solid" lineColor="#000000"/>
+		</box>
+		<paragraph leftIndent="3" rightIndent="3"/>
+	</style>
+	<style name="Head" style="Cell" mode="Opaque" backcolor="#E6E6E6" hTextAlign="Center" fontSize="9" isBold="true"/>
+	<style name="Order" style="Cell" mode="Opaque" backcolor="#DCE6F1" fontSize="11"/>
+	<field name="o.object" class="java.lang.Long"/>
+	<field name="number" class="java.lang.String"/>
+	<field name="deadline" class="java.util.Date"/>
+	<field name="responsible" class="java.lang.String"/>
+	<field name="a.object" class="java.lang.Long"/>
+	<field name="team" class="java.lang.String"/>
+	<field name="employee" class="java.lang.String"/>
+	<field name="position" class="java.lang.String"/>
+	<field name="hours" class="java.math.BigDecimal"/>
+	<field name="workType" class="java.lang.String"/>
+	<field name="note" class="java.lang.String"/>
+	<field name="others" class="java.lang.String"/>
+	<group name="columns" isReprintHeaderOnEachPage="true">
+		<groupExpression><![CDATA[Boolean.TRUE]]></groupExpression>
+		<groupHeader>
+			<band height="18">
+				<staticText>
+					<reportElement style="Head" x="0" y="0" width="130" height="18"/>
+					<text><![CDATA[Звено]]></text>
+				</staticText>
+				<staticText>
+					<reportElement style="Head" x="130" y="0" width="190" height="18"/>
+					<text><![CDATA[Сотрудник]]></text>
+				</staticText>
+				<staticText>
+					<reportElement style="Head" x="320" y="0" width="130" height="18"/>
+					<text><![CDATA[Должность]]></text>
+				</staticText>
+				<staticText>
+					<reportElement style="Head" x="450" y="0" width="45" height="18"/>
+					<text><![CDATA[Часы]]></text>
+				</staticText>
+				<staticText>
+					<reportElement style="Head" x="495" y="0" width="307" height="18"/>
+					<text><![CDATA[Что делать]]></text>
+				</staticText>
+			</band>
+		</groupHeader>
+	</group>
+	<group name="order" minHeightToStartNewPage="60">
+		<groupExpression><![CDATA[$F{o.object}]]></groupExpression>
+		<groupHeader>
+			<band height="20" splitType="Prevent">
+				<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+					<reportElement style="Order" stretchType="RelativeToBandHeight" x="0" y="0" width="500" height="20"/>
+					<box rightPadding="0">
+						<pen lineWidth="0.5"/>
+						<rightPen lineWidth="0.0"/>
+					</box>
+					<textElement>
+						<font isBold="true"/>
+					</textElement>
+					<textFieldExpression><![CDATA[$F{number}]]></textFieldExpression>
+				</textField>
+				<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+					<reportElement style="Order" stretchType="RelativeToBandHeight" x="500" y="0" width="302" height="20"/>
+					<box>
+						<pen lineWidth="0.5"/>
+						<leftPen lineWidth="0.0"/>
+					</box>
+					<textElement textAlignment="Right">
+						<font size="9"/>
+					</textElement>
+					<textFieldExpression><![CDATA[($F{deadline} == null ? "" : "срок " + new java.text.SimpleDateFormat("dd.MM.yyyy").format($F{deadline}))
++ ($F{deadline} != null && $F{responsible} != null ? "  ·  " : "")
++ ($F{responsible} == null ? "" : "отв. " + $F{responsible})]]></textFieldExpression>
+				</textField>
+			</band>
+		</groupHeader>
+	</group>
+	<detail>
+		<band height="18" splitType="Prevent">
+			<staticText>
+				<reportElement style="Cell" stretchType="RelativeToBandHeight" x="0" y="0" width="130" height="18"/>
+				<text><![CDATA[]]></text>
+			</staticText>
+			<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+				<reportElement stretchType="RelativeToBandHeight" x="0" y="0" width="130" height="18" isPrintRepeatedValues="false" printWhenGroupChanges="order"/>
+				<textFieldExpression><![CDATA[$F{team}]]></textFieldExpression>
+			</textField>
+			<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+				<reportElement style="Cell" stretchType="RelativeToBandHeight" x="130" y="0" width="190" height="18"/>
+				<textFieldExpression><![CDATA[$F{employee}]]></textFieldExpression>
+			</textField>
+			<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+				<reportElement style="Cell" stretchType="RelativeToBandHeight" x="320" y="0" width="130" height="18"/>
+				<textElement>
+					<font size="9"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{position}]]></textFieldExpression>
+			</textField>
+			<textField textAdjust="StretchHeight" pattern="#0.##" isBlankWhenNull="true">
+				<reportElement style="Cell" stretchType="RelativeToBandHeight" x="450" y="0" width="45" height="18"/>
+				<textElement textAlignment="Center"/>
+				<textFieldExpression><![CDATA[$F{hours}]]></textFieldExpression>
+			</textField>
+			<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+				<reportElement style="Cell" stretchType="RelativeToBandHeight" x="495" y="0" width="307" height="18"/>
+				<textElement markup="styled"/>
+				<textFieldExpression><![CDATA[($F{workType} == null ? "" : "<style isBold=\"true\">" + $F{workType}.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</style>")
++ ($F{note} == null ? "" : ($F{workType} == null ? "" : "\n") + $F{note}.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
++ ($F{others} == null ? "" : ($F{workType} == null && $F{note} == null ? "" : "\n")
+    + "<style forecolor=\"#707070\" size=\"8\">ещё: " + $F{others}.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</style>")]]></textFieldExpression>
+			</textField>
+		</band>
+	</detail>
+</jasperReport>
