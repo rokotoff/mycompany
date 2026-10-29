@@ -511,8 +511,10 @@ function workBoardFree() {
 }
 
 function workBoard() {
+    // время последнего открытия карточки заказа щелчком по заголовку колонки
+    let openOrderAt = 0;
 
-    function orderHeader(order, options) {
+    function orderHeader(order, options, controller) {
         const head = document.createElement("div");
         head.className = "wb-col-head";
 
@@ -521,6 +523,17 @@ function workBoard() {
         title.className = "wb-col-title";
         title.textContent = [order.number, order.item].filter(Boolean).join(" ");
         title.title = title.textContent + (order.note ? "\n" + order.note : "");
+        // щелчок по заголовку открывает карточку заказа во вкладке МК
+        if (controller && order.id != null) {
+            title.classList.add("wb-col-link");
+            title.addEventListener("click", () => {
+                // карточка открывается пару секунд — повторные щелчки за это время не открывают вторую вкладку
+                const now = Date.now();
+                if (now - openOrderAt < 3000) return;
+                openOrderAt = now;
+                controller.form.exec("boardOpenOrder", order.id);
+            });
+        }
         head.appendChild(title);
 
         // остальное — строки «подпись: значение»
@@ -550,6 +563,7 @@ function workBoard() {
             v.appendChild(workBoardStatus(order));
             fields.appendChild(v);
         }
+        field(workBoardText(options, "typeLabel", "Тип"), order.type);
         field(workBoardText(options, "partnerLabel", "Контрагент"), order.partner);
         field(workBoardText(options, "responsibleLabel", "Ответственный"), order.responsible);
         field(workBoardText(options, "startLabel", "Начало"), workBoardDateFull(order.start));
@@ -1000,7 +1014,7 @@ function workBoard() {
             for (const order of orders) {
                 const col = document.createElement("div");
                 col.className = "wb-col";
-                col.appendChild(orderHeader(order, opts));
+                col.appendChild(orderHeader(order, opts, st.controller));
                 const body = document.createElement("div");
                 body.className = "wb-col-body";
                 // члены одного звена — в одну плашку звена на месте первого из них, остальные — по одному

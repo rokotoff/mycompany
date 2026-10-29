@@ -27,8 +27,13 @@ nameFilterType 'Тип заказа' () = name(filterType());
 changeFilterType (WorkBoard b) {
     INPUT t = filterType() CHANGE LIST name(t) WHERE in(b, t);
 }
-// поиск по номеру заказа (в МК номер — описательный текст), без учёта регистра
+// поиск по номеру заказа (в МК номер — описательный текст), без учёта регистра; не через LIKE:
+// в номерах есть «\», а в LIKE это экранирующий символ, и фрагмент с ним не находился
 orderSearch 'Номер заказа' = DATA LOCAL ISTRING[50] ();
+// при наборе — подсказки из номеров заказов текущей доски; ввод свободный, фильтр по введённому фрагменту
+changeOrderSearch (WorkBoard b) {
+    INPUT s = orderSearch() CHANGE LIST ISTRING[50](number(ManufacturingOrder o)) WHERE onBoard(o, b) AND NOT canceled(o);
+}
 
 // диапазон планирования доски: всегда выбран ровно один
 CLASS PlanningRange 'Диапазон планирования' {
@@ -149,7 +154,7 @@ shown (ManufacturingOrder o, WorkBoard b, DATE from, DATE to) = onBoard(o, b) AN
     (IF filterStatus() THEN status(o) = filterStatus() ELSE NOT canceled(o)) AND
     (NOT filterType() OR type(o) = filterType()) AND
     (NOT filterResponsible() OR responsible(o) = filterResponsible()) AND
-    (NOT orderSearch() OR ISTRING[50](number(o)) LIKE r'%' + orderSearch() + r'%') AND
+    (NOT orderSearch() OR strpos(lower(number(o)), lower(orderSearch())) > 0) AND
     (countAllocations(o, from, to) OR
         ((IF done(o) THEN (filterStatus() OR orderSearch()) AND (orderSearch() OR NOT DATE(executionDateTime(o)) < sum(from, -60))
                      ELSE (orderSearch() OR scheduledDate(o) <= to))
@@ -161,7 +166,7 @@ daysLeft (ManufacturingOrder o) = daysBetweenDates(planeDateTime(o), currentDate
 
 boardOrders (WorkBoard b) = JSON FROM
     id = ManufacturingOrder o, number = number(o), item = STRING[100](nameItem(o)), note = STRING[100](note(o)),
-    partner = STRING[100](namePartner(o)), responsible = STRING[100](nameResponsible(o)),
+    type = STRING[100](nameType(o)), partner = STRING[100](namePartner(o)), responsible = STRING[100](nameResponsible(o)),
     start = scheduledDate(o), end = planeDateTime(o), daysLeft = daysLeft(o), done = done(o),
     status = STRING[50](nameStatus(o)), statusColor = colorStatus(o)
     WHERE shown(o, b)
@@ -179,6 +184,7 @@ workBoardI18n () = JSON FROM
     partnerLabel = 'Контрагент',
     responsibleLabel = 'Ответственный',
     statusLabel = 'Статус',
+    typeLabel = 'Тип',
     startLabel = 'Начало',
     endLabel = 'Окончание',
     leftLabel = 'Осталось',
@@ -242,6 +248,10 @@ boardRelease (WorkAllocation a, STRING from) {
 boardSplit (WorkAllocation a, ManufacturingOrder o, NUMERIC[5,2] h, STRING from) {
     split(a, o, h, toDateFormat(from, r'YYYY-MM-DD'));
 }
+// заголовок колонки — ссылка: карточка заказа во вкладке МК, как «Редактировать» в списке заказов
+boardOpenOrder (ManufacturingOrder o) {
+    IF o IS ManufacturingOrder THEN NEWSESSION edit(o);
+}
 // примечание к назначению из карточки плашки; пустое поле приходит пустой строкой ('' не NULL)
 boardSaveNote (WorkAllocation a, STRING n) {
     IF NOT a IS WorkAllocation THEN RETURN;
@@ -288,7 +298,7 @@ boardSaveAllocation (WorkAllocation a, STRING from, STRING to, NUMERIC[5,2] h) {
 
 FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
     PROPERTIES() todayPeriod, prevPeriod, boardDate SHOWIF isDay(), nextPeriod, captionPlanningRange,
-                 nameFilterDepartment, nameFilterPosition, nameFilterEmployee, nameFilterResponsible, orderSearch, captionFilterStatus
+                 nameFilterDepartment, nameFilterPosition, nameFilterEmployee, nameFilterResponsible, captionFilterStatus
     PROPERTIES rangeFrom 'С' = periodFrom() SHOWIF NOT isDay() ON CHANGE changeRangeFrom(),
                rangeTo 'по' = periodTo() SHOWIF NOT isDay() ON CHANGE changeRangeTo()
 
@@ -296,6 +306,7 @@ FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
     PROPERTIES(b) READONLY name, index
     ORDERS index(b), name(b)
     PROPERTIES() nameFilterType ON CHANGE changeFilterType(b)
+    PROPERTIES() orderSearch ON CHANGE changeOrderSearch(b)
 
     OBJECTS cd = DATE CUSTOM 'workBoardCalendar'
                 OPTIONS JSON FROM caption = calendarCaption()
@@ -337,6 +348,7 @@ FORM workPlanning 'Доски распределения' IMAGE 'bi bi-kanban'
             boardSaveAllocation[WorkAllocation, STRING, STRING, NUMERIC[5,2]],
             boardSaveNote[WorkAllocation, STRING],
             boardSaveWorkType[WorkAllocation, STRING, BOOLEAN],
+            boardOpenOrder[ManufacturingOrder],
             boardCalendarShift[INTEGER]
 
     EVENTS ON INIT {
