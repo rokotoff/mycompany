@@ -104,10 +104,20 @@ function workBoardPopup() {
         pop.className = "wb-pop";
         pop.style.display = "none";
         document.body.appendChild(pop);
-        document.addEventListener("mousedown", (e) => {
+        // окно лежит в body и переживает форму, поэтому щелчок и Esc ловятся на погружении — раньше платформы:
+        // щелчок мимо окна (в том числе по крестику формы, вкладке, меню) закрывает его, Esc при открытом окне
+        // закрывает сначала подсказки поля, потом само окно — и до формы не доходит, иначе закрылась бы она
+        window.addEventListener("mousedown", (e) => {
             if (pop.style.display !== "none" && !pop.contains(e.target)) pop.style.display = "none";
-        });
-        document.addEventListener("keydown", (e) => { if (e.key === "Escape") pop.style.display = "none"; });
+        }, true);
+        window.addEventListener("keydown", (e) => {
+            if (e.key !== "Escape" || pop.style.display === "none") return;
+            e.preventDefault();
+            e.stopPropagation();
+            const suggest = pop.querySelector(".wb-suggest");
+            if (suggest && suggest.style.display !== "none") suggest.style.display = "none";
+            else pop.style.display = "none";
+        }, true);
     }
     pop.innerHTML = "";
     return pop;
@@ -636,7 +646,10 @@ function workBoard() {
         field.appendChild(warn);
 
         // known — наименование из справочника (выбрано из подсказок или уже стояло), add — новое, добавить в список
-        const state = { input: input, warn: warn, known: row.nameWorkType || "", add: false };
+        // getPropertyValues есть не во всех сборках платформы: без него подсказок нет, а введённое
+        // наименование сервер ищет в справочнике сам (boardSaveWorkType)
+        const canSuggest = typeof st.controller.getPropertyValues === "function";
+        const state = { input: input, warn: warn, known: row.nameWorkType || "", add: false, free: !canSuggest };
         const same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
         let timer = null, seq = 0, items = [], active = -1;
 
@@ -672,7 +685,7 @@ function workBoard() {
             warn.style.display = "none";
             clearTimeout(timer);
             const q = input.value.trim();
-            if (!q) { hide(); return; }
+            if (!q || !canSuggest) { hide(); return; }
             // запрос — после паузы в наборе; ответ на устаревший запрос не показывается
             timer = setTimeout(() => {
                 const my = ++seq;
@@ -692,14 +705,11 @@ function workBoard() {
                 e.preventDefault();
                 active = (active + (e.key === "ArrowDown" ? 1 : entries.length - 1)) % entries.length;
                 highlight();
-            } else if (e.key === "Enter" && active >= 0) {
+            } else if (e.key === "Enter" && active >= 0 && active < entries.length) {
                 // Enter выбирает подсказку, а не сохраняет карточку
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 pick(entries[active].text, entries[active].add);
-            } else if (e.key === "Escape" && entries.length) {
-                e.stopPropagation();
-                hide();
             }
         });
         input.addEventListener("blur", hide);
@@ -748,7 +758,7 @@ function workBoard() {
             if (!(h > 0)) { hours.classList.add("wb-invalid"); ok = false; }
             // вид работ — только из справочника: выбран из подсказок, уже стоял или добавляется в список
             const wt = work.input.value.trim();
-            if (wt && !work.add && wt.toLowerCase() !== work.known.trim().toLowerCase()) {
+            if (wt && !work.add && !work.free && wt.toLowerCase() !== work.known.trim().toLowerCase()) {
                 work.input.classList.add("wb-invalid");
                 work.warn.style.display = "block";
                 ok = false;
@@ -931,10 +941,17 @@ function workBoard() {
             if (!checked.length) return;
             const foreman = checked.find((m) => m.radio.checked) || checked[0];
             pop.style.display = "none";
-            // отметки — свойство формы teamMark: звено собирается из отмеченных
-            st.controller.batch(() => {
-                for (const m of marks) st.controller.changeProperty("teamMark", m.row, m.check.checked ? true : null);
-            });
+            // отметки — свойство формы teamMark: звено собирается из отмеченных. batch есть не во всех
+            // сборках платформы (на рабочем сервере его нет): тогда changeProperties или по одной —
+            // запросы уходят по порядку, boardFormTeam выполняется после них
+            const value = (m) => (m.check.checked ? true : null);
+            const c = st.controller;
+            if (typeof c.batch === "function")
+                c.batch(() => { for (const m of marks) c.changeProperty("teamMark", m.row, value(m)); });
+            else if (typeof c.changeProperties === "function")
+                c.changeProperties(marks.map(() => "teamMark"), marks.map((m) => m.row), marks.map(value));
+            else
+                for (const m of marks) c.changeProperty("teamMark", m.row, value(m));
             st.controller.form.exec("boardFormTeam", order.id, n, foreman.row.aid, workBoardDateKey(st.options.actionDate));
         };
         name.addEventListener("keydown", (e) => { if (e.key === "Enter") create(); });
