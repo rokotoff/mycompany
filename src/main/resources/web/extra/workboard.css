@@ -141,6 +141,15 @@
     word-break: break-word;
 }
 
+.wb-col-link {
+    cursor: pointer;
+}
+
+.wb-col-link:hover {
+    text-decoration: underline;
+    color: var(--focus-color, #1a73e8);
+}
+
 .wb-col-fields {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
